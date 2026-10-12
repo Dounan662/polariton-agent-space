@@ -1,0 +1,10 @@
+/* Used token closure from DSH 0.2.0-rc.2; component rules stay local. */
+body {
+  --dsw-alias-separator-primary: var(--dsw-alias-border-l2);
+  --dsw-alias-code-diff-added: var(--dsw-static-green-500-a08);
+  --dsw-alias-code-diff-deleted: var(--dsw-static-red-600-a08);
+  --dsw-alias-label-shimmer: color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent);
+  --dsw-alias-state-idle-primary: var(--dsw-static-neutral-300);
+  --dsw-static-green-500-a08: rgb(34 197 94 / 8%);
+  --dsw-static-red-600-a08: rgb(236 19 19 / 8%);
+}

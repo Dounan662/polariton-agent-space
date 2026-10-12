@@ -1,0 +1,9 @@
+{
+  "stateRoot": "../.local/adr012/rack",
+  "socketPath": "/tmp/polariton-adr012-environment.sock",
+  "dockerContext": "colima-polariton",
+  "dockerConfig": "../.local/adr012/docker",
+  "dockerSocket": "~/.colima/polariton/docker.sock",
+  "maxMounts": 12,
+  "credentialFile": "../.local/adr012/credentials.json"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "polariton-adr009-verification-capability",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.2.0",
+    "zod": "4.6.5"
+  }
+}

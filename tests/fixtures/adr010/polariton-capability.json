@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "name": "ADR-010 measurement and transform",
+  "description": "Prepared versioned assignment-verification fixture with independent invocation receipts",
+  "image": "node@sha256:76d0ed0ed93bed4f4376211e9d8fddac4d8b3fbdb54cc45955696001a3c91152",
+  "build": [
+    [
+      "npm",
+      "ci",
+      "--ignore-scripts",
+      "--omit=dev",
+      "--cache",
+      "/tmp/npm"
+    ]
+  ],
+  "entrypoint": [
+    "node",
+    "server.mjs"
+  ],
+  "lockfiles": [
+    "package-lock.json"
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "role": {
+        "enum": [
+          "measurement",
+          "transform"
+        ]
+      },
+      "seed": {
+        "type": "string",
+        "minLength": 1
+      },
+      "slowMs": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "role",
+      "seed",
+      "slowMs"
+    ],
+    "additionalProperties": false
+  },
+  "mcpPath": "/mcp",
+  "port": 8080,
+  "state": "scratch"
+}

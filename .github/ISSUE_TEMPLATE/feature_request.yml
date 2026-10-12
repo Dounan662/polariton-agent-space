@@ -1,0 +1,16 @@
+name: Feature proposal
+description: Explain a research workflow that Polariton could improve.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+      description: Describe the outcome and how you would know it works.
+    validations:
+      required: true

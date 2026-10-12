@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a reproducible problem with Polariton.
+body:
+  - type: markdown
+    attributes:
+      value: Do not include keys, private research, or full state backups. Report security issues using SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Polariton version or commit
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system, CPU architecture, and Node version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Use a small synthetic example where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Include only relevant errors after removing credentials and private paths.

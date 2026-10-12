@@ -1,0 +1,11 @@
+{
+  "port": 4327,
+  "commandTimeoutMs": 30000,
+  "commandBytes": 4194304,
+  "browserTimeoutMs": 30000,
+  "maxRequests": 20,
+  "maxLiveMs": 600000,
+  "maxOutputTokens": 4096,
+  "maxRequestsPerTurn": 16,
+  "pollMs": 500
+}

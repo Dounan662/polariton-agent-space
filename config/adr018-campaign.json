@@ -1,0 +1,9 @@
+{
+  "id": "adr018",
+  "ledger": "../.local/adr018/verification-budget.sqlite",
+  "maxRequests": 60,
+  "maxLiveMs": 3600000,
+  "maxOutputTokens": 8192,
+  "reserveRequests": 15,
+  "reserveMs": 900000
+}

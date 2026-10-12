@@ -1,0 +1,8 @@
+{
+  "installTimeoutMs": 3600000,
+  "commandOutputBytes": 8388608,
+  "serviceRestartMs": 5000,
+  "serviceStartLimitMs": 60000,
+  "serviceStartLimitBurst": 3,
+  "socketPathBytes": 100
+}

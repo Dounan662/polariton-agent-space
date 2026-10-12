@@ -1,0 +1,8 @@
+{
+  "deadlineMs": 180000,
+  "pollMs": 500,
+  "gateSeconds": 120,
+  "commandBytes": 67108864,
+  "browserConvergenceMs": 5000,
+  "imageModel": "deepseek-v4-flash-vision-exp"
+}

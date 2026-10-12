@@ -1,0 +1,43 @@
+# Local environments and dependencies
+.venv/
+node_modules/
+
+# Build and test output
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+dist/
+build/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Local credentials and operating-system metadata
+.env
+.env.*
+!.env.example
+!.env.*.example
+.DS_Store
+
+# Provisioned harness, isolated runtime state and local dependency cache
+.local/
+.cache/
+
+.npm-cache/
+
+# Public distribution output and private operational material
+release-artifacts/
+*.tar.gz
+*.tgz
+credentials.env
+.credentials.yaml
+.npmrc
+
+# Generated verification output is private.
+/docs/evidence/

@@ -1,0 +1,4 @@
+/* Used token closure from DSH 0.2.0-rc.2; component rules stay local. */
+body {
+  --dsw-focus-ring-width: 2px;
+}

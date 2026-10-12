@@ -1,0 +1,82 @@
+import {imageCardModel} from '../models/image-card-model.ts'
+import type { ReactNode } from 'react'
+import {
+  IconApiOutline14, IconBrowseOutline16, IconCodeOutline16, IconEditOutline16, IconSearchOutline16,
+  IconSparkle16,
+} from '../../../../../../chat-primitives.tsx'
+import type { ToolCallOwnerProps, ToolTreeProps } from '../../contract/slots.ts'
+import { readCardModel, readCallLine } from '../models/read-card-model.ts'
+import { diffCardModel } from '../models/diff-card-model.ts'
+import { searchCardModel } from '../models/search-card-model.ts'
+import { terminalCardModel, terminalFailed } from '../models/terminal-card-model.ts'
+import { webCardModel, webFetchHref } from '../models/web-card-model.ts'
+import { toolRowModel, type ToolRowVariant } from '../models/tool-call-model.ts'
+import { localizeAutoReviewDenial } from '../models/auto-review-denial.ts'
+import { ToolRow } from '../components/ToolRow.tsx'
+
+/** Variant leading icons (figma table); all glyphs render at 14 inside the 16px leading box. */
+const VARIANT_ICONS: Record<ToolRowVariant, ReactNode> = {
+  search: <IconSearchOutline16 size={14} />,
+  read: <IconBrowseOutline16 size={14} />,
+  bash: <IconApiOutline14 size={14} />,
+  write: <IconEditOutline16 size={14} />,
+  edit: <IconEditOutline16 size={14} />,
+  code: <IconCodeOutline16 size={14} />,
+  others: <IconSparkle16 size={14} />,
+}
+
+/** Card props: the owner payload plus the render site's locale seat (plain prop). */
+export type GenericToolCardProps = ToolCallOwnerProps & {
+  t: ToolTreeProps['t']
+}
+
+/** @param props - current tool stage and locale. @returns its preparation or dispatched card. */
+export function GenericToolCard({ toolName, block, cwd, home, openFile, inspect, useDisclosure, renderMessageImages, loadImage, t }: GenericToolCardProps) {
+  const model = toolRowModel(toolName, block, cwd, home)
+  const autoReview = model.autoReviewDenial === null
+    ? null
+    : localizeAutoReviewDenial(model.autoReviewDenial, t)
+  const terminal = terminalCardModel(block, cwd)
+  const read = readCardModel(block, cwd, home)
+  const diff = diffCardModel(block)
+  const search = searchCardModel(block)
+  const web = webCardModel(block)
+  const image = imageCardModel(block,cwd,home)
+  // A failing exit status is the terminal card's own error signal (the call
+  // itself settles isError:false), surfaced through the row's error summary.
+  const state = model.state === 'ok' && terminal !== null && terminalFailed(terminal)
+    ? 'error'
+    : model.state
+  const singleFile = model.filePath !== undefined
+  return (
+    <ToolRow
+      useDisclosure={useDisclosure}
+      t={t}
+      variant={model.variant}
+      toolName={toolName}
+      icon={VARIANT_ICONS[model.variant]}
+      title={t(model.titleKey)}
+      summary={model.summary}
+      // Single-file tools never expose an args body — the path link is the only
+      // args interaction. A card is not an args body: a read/write/edit row is
+      // single-file AND carries a card, so the card expands under the path link.
+      bodyRaw={(singleFile && openFile !== undefined) || autoReview !== null ? null : model.bodyRaw}
+      output={autoReview?.output ?? model.output}
+      errorSummary={autoReview?.summary ?? model.errorSummary}
+      image={image}
+      loadImage={loadImage}
+      renderSlot={(_name,{images,align})=>renderMessageImages({images,align})}
+      terminal={terminal}
+      diff={diff}
+      read={read}
+      search={search}
+      web={web}
+      state={state}
+      filePath={model.filePath}
+      filePathLine={readCallLine(block)}
+      href={webFetchHref(block)}
+      onOpenFile={singleFile ? openFile : undefined}
+      inspect={inspect}
+    />
+  )
+}

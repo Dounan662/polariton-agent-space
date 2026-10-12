@@ -1,0 +1,34 @@
+/* Process rows sit 6px apart; an Assistant response is separated from its
+   neighbours by 12px. */
+.flowItem[data-chat-group-part="response"] {
+  --dsh-chat-flow-gap: 12px;
+}
+
+.column > [data-chat-group-part="response"]:not([hidden]):not(:empty)
+  + :not([hidden]):not(.flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty))):not(.running) {
+  --dsh-chat-flow-gap: 12px;
+}
+
+/* Settled-flow identity boundary. It is neutral until it becomes the natural
+   measurement/mount unit for a virtualizer without changing the column gap. */
+.flowItem {
+  min-width: 0;
+}
+
+/* The Turn header has 16px clearance from its input and following content. */
+.flowItem[data-chat-flow-kind="turn-process"],
+.flowItem[data-turn-process-answer],
+.column > [data-chat-flow-kind="turn-process"] + :not([hidden]):not(.flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty))):not(.running) {
+  --dsh-chat-flow-gap: 16px;
+}
+
+/* Empty Seats, including retained empty slot anchors, preserve Turn lookup
+   without contributing height or the sibling gap. */
+.flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty)) {
+  height: 0;
+}
+
+.callRow {
+  border-radius: var(--dsw-radius-sm);
+}
+

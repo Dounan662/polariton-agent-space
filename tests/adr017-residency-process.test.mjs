@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {mkdtemp,mkdir,realpath,rm} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {Harness} from '../harness/client.ts';
+import {loadConfig} from '../src/config.ts';
+import {readHistory} from '../harness/history.mjs';
+import {ResidencySnapshot} from '../harness/settings.ts';
+
+test('production ACP close drains committed maintenance, retains history and admits a retained resume',{timeout:60000},async t=>{
+  const root=await realpath(await mkdtemp(join(tmpdir(),'polariton-residency-acp-'))),workspace=join(root,'workspace'),home=join(root,'home');
+  await mkdir(workspace);
+  let providerRequests=0;
+  const config={...await loadConfig(),verification:true,startupTimeoutMs:20000,requestTimeoutMs:15000};
+  const harness=new Harness(config,home,workspace,async()=>{providerRequests++;return false;});
+  const harnesses=[harness];t.after(async()=>{for(const instance of harnesses)await instance.close();await rm(root,{recursive:true,force:true});});
+  await harness.start();
+  const {sessionId}=await harness.activate(null,[]);
+  const before=ResidencySnapshot.parse(await harness.activity(sessionId));
+  assert.equal(before.eligible,true,JSON.stringify(before));
+  const suspension=await harness.suspend(sessionId,before.revision,()=>true);
+  assert.equal(suspension.suspended,true,JSON.stringify(suspension));
+  const history=await readHistory(join(home,'sessions'),sessionId,{limit:config.maxHistoryEvents});
+  assert.equal(history.events.some(event=>event.type==='user/message'),false);
+  const next=new Harness(config,home,workspace,async()=>{providerRequests++;return false;});
+  harnesses.push(next);await next.start();await next.activate(sessionId,[]);
+  const resumed=ResidencySnapshot.parse(await next.activity(sessionId));
+  assert.equal(resumed.eligible,true,JSON.stringify(resumed));assert.equal(resumed.reservation,undefined);
+  await next.closeSession(sessionId);
+  assert.equal(providerRequests,0);
+});

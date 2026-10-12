@@ -1,0 +1,46 @@
+name: Prepare release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  archive:
+    needs: checks
+    runs-on: ubuntu-26.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - name: Package selected source and record its identity
+        run: |
+          node --input-type=module <<'JS'
+          import {readFile, writeFile} from 'node:fs/promises';
+          import {basename, resolve} from 'node:path';
+          import {createRelease} from './src/deployment.ts';
+          const {version} = JSON.parse(await readFile('package.json', 'utf8'));
+          const {archive, sha256} = await createRelease(process.cwd(), resolve('release-artifacts'), version);
+          await writeFile('release-artifacts/SHA256SUMS', `${sha256}  ${basename(archive)}\n`);
+          await writeFile('release-artifacts/SOURCE.json', JSON.stringify({version, commit: process.env.GITHUB_SHA, repository: process.env.GITHUB_REPOSITORY, workflowRun: process.env.GITHUB_RUN_ID, archive: basename(archive), sha256}, null, 2) + '\n');
+          JS
+      - name: Verify the extracted deliverable independently
+        run: node scripts/verify-archive.mjs release-artifacts/*.tar.gz
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: polariton-source-${{ github.sha }}
+          path: |
+            release-artifacts/*.tar.gz
+            release-artifacts/SHA256SUMS
+            release-artifacts/SOURCE.json
+          if-no-files-found: error
+          retention-days: 30

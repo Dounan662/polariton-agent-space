@@ -1,0 +1,49 @@
+{
+  "format": 1,
+  "name": "Domain capability",
+  "description": "Replace the sample operation with your domain behavior",
+  "image": "node@sha256:76d0ed0ed93bed4f4376211e9d8fddac4d8b3fbdb54cc45955696001a3c91152",
+  "build": [
+    [
+      "npm",
+      "ci",
+      "--ignore-scripts",
+      "--cache",
+      "/tmp/npm"
+    ],
+    [
+      "npm",
+      "test"
+    ],
+    [
+      "npm",
+      "prune",
+      "--omit=dev",
+      "--ignore-scripts",
+      "--cache",
+      "/tmp/npm"
+    ]
+  ],
+  "entrypoint": [
+    "node",
+    "server.mjs"
+  ],
+  "lockfiles": [
+    "package-lock.json"
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "scale": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "scale"
+    ],
+    "additionalProperties": false
+  },
+  "mcpPath": "/mcp",
+  "port": 8080,
+  "state": "scratch"
+}

@@ -1,0 +1,4 @@
+{
+  "native": {"deadlineMultiplier": 1, "concurrency": 2},
+  "qemu-amd64": {"deadlineMultiplier": 4, "concurrency": 1}
+}

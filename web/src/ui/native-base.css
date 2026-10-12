@@ -1,0 +1,14 @@
+/* Used token closure from DSH 0.2.0-rc.2; component rules stay local. */
+body {
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-font-family-code: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas,
+    'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei';
+  --ds-transition-duration: 0.2s;
+  --dsw-font-sm-13: 400 13px/20px var(--dsw-font-family);
+  --dsw-font-family: var(--ds-font-family-sans, Inter, system-ui, sans-serif);
+  --dsw-radius-lg: 16px;
+  --dsw-radius-md: 12px;
+  --dsw-radius-sm: 8px;
+  --dsw-radius-xl: 20px;
+  --dsw-radius-xs: 4px;
+}

@@ -1,0 +1,5 @@
+{
+  "extends":"./tsconfig.json",
+  "compilerOptions":{"allowJs":true,"checkJs":true,"lib":["ES2024","DOM","DOM.Iterable"]},
+  "include":["harness/messages.mjs","harness/mcp.mjs","harness/bridge.mjs","harness/residency.mjs","harness/job-guidance.mjs","harness/skills.mjs","harness/instructions.mjs","harness/execution.mjs"]
+}

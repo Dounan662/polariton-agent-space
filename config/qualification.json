@@ -1,0 +1,12 @@
+{
+  "provider": "deepseek-official",
+  "model": "deepseek-v4-flash",
+  "maxRequests": 30,
+  "maxOutputTokens": 4096,
+  "maxLiveMs": 1200000,
+  "requestTimeoutMs": 120000,
+  "startupTimeoutMs": 60000,
+  "shutdownTimeoutMs": 60000,
+  "maxFrameBytes": 8388608,
+  "historyPageSize": 100
+}

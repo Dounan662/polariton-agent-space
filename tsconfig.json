@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ES2024", "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "NodeNext", "moduleResolution": "NodeNext", "allowImportingTsExtensions": true,
+    "noEmit": true, "strict": true, "skipLibCheck": true, "allowJs": true,
+    "jsx": "react-jsx", "esModuleInterop": true, "types": ["node"]
+  },
+  "include": ["harness/**/*.ts", "src/**/*.ts", "web/**/*.ts", "web/**/*.tsx", "tests/**/*.ts", "vite.config.ts"]
+}
