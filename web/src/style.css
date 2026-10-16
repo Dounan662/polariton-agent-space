@@ -279,21 +279,67 @@ body:has(.panel-resizer[data-resizing=true]) * {
 .capability-icon { width:18px; height:18px; flex-shrink:0; }
 .environment-nav-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .environment-main { flex:1; min-width:0; overflow:auto; }
-.environment-content { width:100%; padding:32px; max-width:1000px; margin:0 auto; }
-.environment-heading { display:flex; justify-content:space-between; align-items:center; gap:24px; margin-bottom:32px; }
-.environment-heading h1 { margin:0; font-size:24px; font-weight:550; overflow-wrap:anywhere; }
+.environment-content { width:100%; min-width:0; padding:32px; max-width:1000px; margin:0 auto; overflow-wrap:anywhere; }
+/* Reserve the trailing status space so setup never changes the row height. */
+.capability-nav-item .environment-nav-name { flex:1; min-width:0; }
+.capability-status { display:flex; align-items:center; flex-shrink:0; color:var(--attention-text); }
+.capability-source { overflow-wrap:anywhere; color:var(--text-secondary); }
+.capability-content { max-width:840px; }
+.capability-properties { display:flex; flex-direction:column; gap:24px; margin:32px 0; }
+.capability-properties > section { min-width:0; }
+.capability-properties > section > h2 { font-size:12px; line-height:18px; font-weight:500; color:var(--text-secondary); margin:0 0 6px; }
+.capability-properties p { margin:4px 0; }
+.environment-workspace .capability-properties details { margin:8px 0 0; }
+.environment-workspace .capability-properties > details { margin:0; border-top:1px solid var(--line-subtle); padding-top:16px; }
+.capability-environment { margin:8px 0; }
+.capability-environment .muted p { margin:4px 0; }
+.environment-details .capability-properties { gap:20px; }
+.environment-workspace a { color:var(--accent-text); text-decoration:none; }
+.environment-workspace a:hover { text-decoration:underline; }
+.environment-content { line-height:1.65; }
+.environment-content > h2,.environment-content > section > h2 { font-size:14px; line-height:20px; font-weight:500; margin:28px 0 8px; }
+.capability-authentication > p { margin:8px 0 16px; }
+.capability-authentication details[open] > summary { margin-bottom:12px; }
+.environment-heading { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:24px; margin-bottom:24px; }
+.environment-workspace .header-actions { flex-wrap:wrap; }
+.environment-heading h1 { margin:0; font-size:24px; line-height:32px; font-weight:500; letter-spacing:-.5px; overflow-wrap:anywhere; }
 .environment-heading > button { flex-shrink:0; }
 .environment-notice { padding:12px 32px; color:var(--text-secondary); font-size:12px; }
 .environment-workspace label { display:flex; flex-direction:column; gap:6px; margin:12px 0; font-size:12px; }
 .environment-workspace input,.environment-workspace select,.environment-workspace textarea { width:100%; min-width:0; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:var(--surface-canvas); color:inherit; font:inherit; }
+.environment-main :where(button):not(.environment-card),.environment-workspace .modal :where(button):not(.environment-card) { border-radius:var(--radius-control); font-size:12px; }
+.environment-workspace :is(button,input,textarea,select,summary,a):focus-visible { outline:2px solid var(--accent-text); outline-offset:2px; }
+.environment-workspace :is(input,textarea,select):focus-visible { outline:none; border-color:var(--accent-text); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent-fill) 20%,transparent); }
+.environment-workspace button:disabled { opacity:1; color:var(--text-secondary); background:var(--surface-inset); border-color:var(--line-subtle); }
 .environment-card { display:block; width:100%; text-align:left; margin:12px 0; padding:20px; border:1px solid var(--line); border-radius:10px; background:var(--surface-canvas); font-size:13px; line-height:1.6; box-shadow:none; }
 .environment-card > div:first-child { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
 .environment-card.selected { border-color:var(--accent-text); }
-.environment-card strong { font-size:14px; font-weight:550; }
+.environment-card strong { font-size:14px; font-weight:500; }
+.environment-account { padding:16px 20px; border-color:var(--line-subtle); background:var(--surface-panel); }
+.environment-account p { font-size:12px; margin:8px 0 16px; }
+.environment-account-editor { margin:24px 0; padding:20px; border:1px solid var(--line); border-radius:var(--radius-row); }
+.environment-account-editor h3 { margin:0; font-size:15px; font-weight:500; }
+.environment-account-editor > p { font-size:12px; margin:8px 0 16px; }
 .environment-error { color:var(--danger-text,#b33832); overflow-wrap:anywhere; }
 .environment-details { border-left:1px solid var(--line); container-type:inline-size; }
 .environment-details > .environment-content { overflow:auto; width:100%; padding:24px; }
 .environment-details header { display:flex; justify-content:space-between; gap:12px; flex-shrink:0; }
+/* Inspector navigation and validation are separate actions, not one competing toolbar. */
+.environment-inspector-actions { margin-top:24px; padding-top:16px; border-top:1px solid var(--line-subtle); }
+.environment-inspector-actions .environment-capability-link { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:4px 0; border:0; border-radius:var(--radius-control); background:transparent; color:var(--text-secondary); font-size:12px; }
+.environment-inspector-actions .environment-capability-link:hover:not(:disabled) { color:var(--accent-text); background:transparent; }
+.environment-capability-link svg { flex-shrink:0; }
+.environment-checks { margin-top:20px; }
+.environment-checks > h3 { margin:0 0 4px; color:var(--text-secondary); font-size:11px; line-height:18px; font-weight:500; }
+.environment-check-row { display:flex; align-items:center; gap:16px; min-height:60px; padding:12px 0; }
+.environment-check-row + .environment-check-row { border-top:1px solid var(--line-subtle); }
+.environment-check-label { display:flex; flex:1; min-width:0; flex-direction:column; gap:3px; font-size:11px; line-height:16px; }
+.environment-check-label > strong { color:var(--text-primary); font-size:12px; line-height:18px; font-weight:500; overflow-wrap:anywhere; }
+.environment-inspector-actions .environment-check-action { min-width:60px; min-height:30px; flex-shrink:0; padding:4px 12px; border:1px solid var(--line-subtle); border-radius:var(--radius-control); background:var(--surface-panel); font-size:11px; line-height:18px; }
+.environment-inspector-actions .environment-check-action:hover:not(:disabled) { background:var(--surface-inset); border-color:var(--line); }
+.environment-check-result.passed { color:var(--success-text); }
+.environment-check-result.failed { color:var(--danger-text); }
+@media(pointer:coarse){.environment-inspector-actions :is(.environment-capability-link,.environment-check-action){min-height:44px;}}
 .environment-details pre,.environment-catalog pre { font-size:11px; white-space:pre-wrap; overflow-wrap:anywhere; max-height:360px; overflow:auto; }
 .environment-workspace details { margin:20px 0; font-size:12px; }
 .environment-workspace summary { cursor:pointer; color:var(--text-secondary); }
@@ -304,12 +350,22 @@ body:has(.panel-resizer[data-resizing=true]) * {
   .environment-details > .environment-content { padding:16px; }
   .environment-details .environment-facts { grid-template-columns:minmax(0,1fr); gap:6px; }
   .environment-details .environment-facts dd { margin-bottom:12px; }
+  .environment-details .environment-card { padding:12px; }
 }
 .environment-tool { margin:20px 0; font-size:12px; }
 .environment-catalog { width:min(620px,90vw); max-height:85vh; overflow:auto; padding:24px; }
 .environment-catalog header { display:flex; justify-content:space-between; align-items:center; }
 .environment-dialog { width:min(420px,90vw); padding:24px; }
 dialog.environment-dialog,dialog.environment-catalog { border:1px solid var(--line); border-radius:12px; color:var(--text-primary); background:var(--surface-canvas); }
+/* Match the existing project and provider form grammar without changing operations. */
+.environment-workspace .modal h2 { font-size:20px; line-height:28px; font-weight:500; letter-spacing:-.4px; margin:0 0 8px; }
+.environment-workspace .modal > p { color:var(--text-secondary); font-size:12px; line-height:1.65; }
+.environment-workspace .modal-footer { flex-wrap:wrap; gap:8px; border-color:var(--line-subtle); }
+.environment-workspace .modal-footer button { min-height:36px; font-size:12px; line-height:18px; }
+.environment-prepare-actions { justify-content:space-between; align-items:center; }
+.environment-prepare-actions .header-actions { margin-left:auto; gap:8px; }
+.environment-prepare-actions .environment-secondary-action { padding-left:0; border-color:transparent; background:transparent; color:var(--text-secondary); }
+.environment-prepare-actions .environment-secondary-action:hover:not(:disabled) { color:var(--text-primary); }
 dialog::backdrop { background:rgb(0 0 0 / 25%); }
 @media(max-width:1000px){.environment-content{padding:20px;}.environment-heading{gap:12px;}}
 
@@ -535,3 +591,16 @@ dialog::backdrop { background:rgb(0 0 0 / 25%); }
 @container navigation (max-width:140px) {
  .brand { flex-wrap:wrap; gap:6px; padding-inline:0; font-size:clamp(12px,14cqi,18px); }
 }
+
+/* Environment composition selects immutable catalog entries, with one quiet row per choice. */
+.environment-capability-list { display:grid; gap:4px; margin:16px 0; padding:0; border:0; }
+.environment-capability-list legend { font-size:12px; font-weight:500; margin-bottom:8px; }
+.environment-workspace .environment-capability-option > label { display:flex; flex-direction:row; align-items:center; gap:12px; margin:0; padding:10px 12px; border:1px solid var(--line-subtle); border-radius:var(--radius-row); cursor:pointer; }
+.environment-capability-option.selected > label { background:var(--surface-panel); border-color:var(--line); }
+.environment-workspace .environment-capability-option input[type=checkbox] { width:15px; height:15px; margin:0; flex-shrink:0; accent-color:var(--accent-fill); }
+.environment-capability-option > label > span { min-width:0; flex:1; }
+.environment-capability-option > label strong { font-size:12px; font-weight:500; }
+.environment-capability-option small { display:block; color:var(--text-secondary); font-size:11px; }
+.environment-recovery { padding-bottom:0; font-size:12px; color:var(--text-secondary); }
+
+.environment-capability-option > details { margin:8px 12px 16px; }

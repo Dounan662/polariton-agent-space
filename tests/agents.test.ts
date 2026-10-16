@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import {owner} from '../src/caller.ts';
 import {activateWorker,isActivationPrompt,isExerciseSubmission} from './fixtures/activation.ts';
 import assert from 'node:assert/strict';
@@ -53,7 +54,7 @@ async function activeFixture(t: TestContext, options: Partial<Config> = {}) {
   t.after(async () => {
     for (const harness of harnesses.values()) { harness.autoClose = true; harness.exit(); }
     await new Promise(resolve => setImmediate(resolve));
-    if (!agentsClosed) await agents.close(); tree.close(); await rm(root, { recursive: true, force: true });
+    if (!agentsClosed) await agents.close(); await tree.close(); await rm(root, { recursive: true, force: true });
   });
   const first = agents.create(project.id, node, id(), {title:'First'});
   const second = agents.create(project.id, node, id(), {title:'Second'});
@@ -75,7 +76,7 @@ test('inactive worker identities persist independently and controls reject cross
   let calls = 0;
   const refuseProvider = async () => { calls++; return false; };
   let agents = new AgentManager(config, tree, refuseProvider);
-  t.after(async () => { await agents.close(); tree.close(); await rm(root, { recursive: true, force: true }); });
+  t.after(async () => { await agents.close(); await tree.close(); await rm(root, { recursive: true, force: true }); });
   let sequence = 0;
   const id = () => `10000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`;
   const project = await tree.createProject(globalThis.crypto.randomUUID(), 'Workers');
@@ -119,7 +120,7 @@ test('overlapping workers scope prompts, steering, permissions and interrupt, in
   await writeFile(join(workspace, 'second-draft.txt'), 'Unfinished second contribution');
   const publisher = {kind:'worker' as const,id:f.first.id,processId:f.view(f.first.id).processId!};
   const sharedCheckpoint = await f.tree.checkpoint(f.project, f.node, f.id(), {publisher});
-  assert.deepEqual(sharedCheckpoint.files, ['first-draft.txt', 'second-draft.txt']);
+  assert.deepEqual(execFileSync('git',['-C',workspace,'ls-tree','-r','--name-only',sharedCheckpoint.commit],{encoding:'utf8'}).trim().split('\n'), ['first-draft.txt', 'second-draft.txt']);
   assert.deepEqual(sharedCheckpoint.publisher, publisher);
   assert.equal(f.view(f.first.id).state, 'running');
   assert.equal(f.view(f.second.id).state, 'running');

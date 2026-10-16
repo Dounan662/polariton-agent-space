@@ -63,7 +63,7 @@ async function fixture(t: TestContext, settings: {maxPendingMessages?:number} = 
   const messages = () => harnesses.flatMap(h => h.calls).filter(call => call.method === 'message' && !isActivationPrompt(call.params));
   t.after(async () => {
     for (const harness of harnesses) harness.complete();
-    await agents.close(); tree.close(); await rm(root, {recursive: true, force: true});
+    await agents.close(); await tree.close(); await rm(root, {recursive: true, force: true});
   });
   return {root, config, tree, project: project.id, node, worker, id, view, harnesses, messages, faults,
     get agents() { return agents; },

@@ -30,7 +30,9 @@ function WorkerCreation({worker,modelName}:{worker:WorkerView;modelName:string})
 type DraftImage=Pick<StagedImage,'id'|'name'>&{preview:string};
 // Revision names belong to an environment; the picker must preserve the full reference.
 const environmentKey=(value:EnvironmentRef|null)=>value?JSON.stringify([value.environmentId,value.revisionId]):'';
-export function WorkerPane({choicesPollMs,notices,worker,observation,onError,onChanged,projectName,onGraph,details,onDetails}:{choicesPollMs:number;notices?:React.ReactNode;worker:WorkerView;observation:WorkerObservation;onError:(s:string)=>void;onChanged:()=>void;projectName:string;onGraph:()=>void;details:HTMLElement|null;onDetails:()=>void}) {
+/** Keep worker state mounted across module navigation. Visibility gates reading
+ * and restoration independently of the worker's execution state and source feed. */
+export function WorkerPane({visible,choicesPollMs,notices,worker,observation,onError,onChanged,projectName,onGraph,details,onDetails}:{visible:boolean;choicesPollMs:number;notices?:React.ReactNode;worker:WorkerView;observation:WorkerObservation;onError:(s:string)=>void;onChanged:()=>void;projectName:string;onGraph:()=>void;details:HTMLElement|null;onDetails:()=>void}) {
  const version=useSyncExternalStore(observation.subscribe,observation.getSnapshot),base=observation.base;
  const [tab,setTab]=useState<'conversation'|'trajectory'>(()=>sessionStorage.getItem(`polariton.tab.${worker.id}`)==='trajectory'?'trajectory':'conversation');
  const [inspectedCall,setInspectedCall]=useState<string|null>(null);
@@ -103,7 +105,7 @@ export function WorkerPane({choicesPollMs,notices,worker,observation,onError,onC
   {worker.mcp.some(value=>value.status==='unavailable')&&<div className="notice" role="status"><details><summary>Some environment tools are unavailable. This worker can continue.</summary><p>Last activation check. Fix the affected component, then close and resume this worker to retry.</p><ul>{worker.mcp.map(value=><li key={value.componentId}>{value.componentId}: {value.status}{value.code?` (${value.code})`:''}</li>)}</ul></details></div>}
    {observation.status==='connecting'&&<div className="notice" role="status">Synchronizing worker…</div>}{worker.error&&<div className="notice">{worker.error}</div>}{observation.error&&<div className="notice" role="alert">{observation.error}{observation.status==='error'&&<button onClick={()=>observation.retry()}>Retry source</button>}</div>}
   <div className="conversation-body" hidden={tab!=='conversation'}>
-   <Conversation active={tab==='conversation'} observation={observation} submissions={worker.submissions} outgoing={outbox} busy={busy} edit={editMessage} retry={value=>void submit(value)} retrySetup={id=>void command(`submissions/${id}/retry`)} dismiss={id=>setOutbox(previous=>previous.filter(value=>value.request.id!==id))} onInspectCall={inspectCall}/>
+   <Conversation active={visible&&tab==='conversation'} observation={observation} submissions={worker.submissions} outgoing={outbox} busy={busy} edit={editMessage} retry={value=>void submit(value)} retrySetup={id=>void command(`submissions/${id}/retry`)} dismiss={id=>setOutbox(previous=>previous.filter(value=>value.request.id!==id))} onInspectCall={inspectCall}/>
   </div>
   {worker.submissions.filter(s=>s.kind==='interrupt'&&['pending','failed','uncertain'].includes(s.state)).map(s=><div className="notice" role="status" key={s.id}>Interrupt · {s.detail??s.state}</div>)}
   <div className="trajectory-host" hidden={tab!=='trajectory'}><Trajectory observation={observation} details={details} onDetails={onDetails} focus={inspectedCall} onFocusComplete={completeInspection}/></div>

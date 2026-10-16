@@ -28,7 +28,7 @@ async function fixture(t:TestContext){
  const snapshots=await CanvasSnapshots.open(config.stateRoot,config.canvas,error=>{throw error;});t.after(()=>snapshots.close());
  const operations=new MainOperations(config,tree,agents,projects,{} as EnvironmentClient,new CanvasBridge(config.canvas),snapshots);
  const read=async(input:Record<string,unknown>={})=>WorkerOverview.parse(await operations.execute(Request.parse({version:1,command:{kind:'worker.overview',input}}),{kind:'worker',id:worker,processId:id()}));
- t.after(async()=>{for(const h of harnesses)h.complete();await agents.close();tree.close();await rm(root,{recursive:true,force:true});});
+ t.after(async()=>{for(const h of harnesses)h.complete();await agents.close();await tree.close();await rm(root,{recursive:true,force:true});});
  return {root,config,id,tree,project:project.id,node,agents,projects,worker,harnesses,operations,read};
 }
 function until(agents:AgentManager,ready:()=>boolean){if(ready())return Promise.resolve();return new Promise<void>(resolve=>{const check=()=>{if(ready()){agents.off('change',check);resolve();}};agents.on('change',check);check();});}

@@ -48,15 +48,25 @@ Reads inspect current state. Mutations such as creating a project or publishing 
 checkpoint return an operation receipt. Most require `--request-id` with a UUID;
 read the specific command's help before running it.
 
-`worker send` generates a request UUID when omitted and prints recovery information
-to stderr before dispatch. Capture that information when automating sends. If the
+`worker send`, `environment prepare`, `environment validate`, and `operation continue`
+generate a request UUID when omitted and print recovery information before dispatch.
+Capture stdout and stderr when automating these commands. If the
 reply is lost, inspect the original operation with `operation get` and follow its
 recovery guidance. Retrying an uncertain send with a new ID can send a second message.
 An identical retry must retain the original ID and input.
 
 `--wait` observes progress. An observation timeout stops waiting, not the underlying
-worker. Interrupting work and stopping observation are separate actions. A checkpoint
-can include shared unfinished edits; review its result before treating it as a milestone.
+worker. Interrupting work and stopping observation are separate actions.
+
+`checkpoint publish --node ID --request-id UUID [--note TEXT]` stages the whole
+node with `git add -A`, consumes partial staging, and commits or reuses unchanged
+`HEAD`. It can include shared unfinished edits. Avoid concurrent manual Git operations;
+review [checkpoint semantics](GETTING_STARTED.md#save-a-checkpoint) before publication.
+After a failure, staging or a commit may already exist; inspect and retry the original
+identity rather than assuming rollback.
+
+For complete preparation, schema discovery, account setup, validation and versioned
+continuation, follow [capability operations](ENVIRONMENT.md).
 
 ## Output and exit status
 

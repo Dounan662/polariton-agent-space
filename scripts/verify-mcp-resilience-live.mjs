@@ -64,7 +64,7 @@ try{
 }catch(error){report.checks.push({name:'campaign',status:'fail',code:error?.code??error?.name??'ERROR'});process.exitCode=1;}
 finally{
   clearTimeout(timer);
-  try{if(agents)await agents.close();if(tree)tree.close();if(rack)await rack.close();await service.close();await denied.close();report.cleanup=true;}catch{report.passed=false;process.exitCode=1;}
+  try{if(agents)await agents.close();if(tree)await tree.close();if(rack)await rack.close();await service.close();await denied.close();report.cleanup=true;}catch{report.passed=false;process.exitCode=1;}
   if(ledger)report.budget=ledger.close();report.finished=new Date().toISOString();
   await writeFile(join(run,'report.json'),scrub(report));await writeFile(join(evidence,`${attempt}.json`),scrub(report));
   console.log(JSON.stringify({attempt,passed:report.passed,requests:report.requests,budget:report.budget,checks:report.checks,cleanup:report.cleanup}));

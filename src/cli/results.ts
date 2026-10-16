@@ -6,6 +6,7 @@ import {SessionMetrics} from '../metrics.ts';
 import {Id,Checkpoint,WorkerResidency,WorkerCreation,WorkerEnvironment,WorkerMcpStatus,Submission,GraphCommand} from '../contracts.ts';
 import {Operation} from '../operations.ts';
 import {OfficialPage,OfficialDetail,Capability,Revision,EnvironmentDocument,ImportPreview,RecordSchemas,EnvironmentChoice} from '../environment/contracts.ts';
+import {PreparationResult,Inspection} from '../environment/preparation-contracts.ts';
 
 /** Version-one wire results. Domain data remains owned by its module; native DSH
  * event bodies and release provenance are explicitly extensible JSON payloads. */
@@ -38,6 +39,7 @@ const read:Record<string,z.ZodType>={
  'catalog.list':OfficialPage,'catalog.get':OfficialDetail,
  'release.get':z.object({release:RecordSchemas.release!,provenance:z.json()}).strict(),
  'environment.list':page(z.object({id:z.string(),head:Revision,applied:z.json().nullable()}).strict()),'environment.get':Revision,
+ 'environment.inspect':Inspection,'environment.preparation-preview':PreparationResult,
  'environment.preview':z.object({valid:z.literal(true),base:Revision.nullable(),document:EnvironmentDocument,changed:z.boolean(),reserved:z.literal(false)}).strict(),
  'mount.list':page(RecordSchemas.mount!),'mount.get':RecordSchemas.mount!,'mount.observe':RecordSchemas.observation!,
  'binding.list':page(z.object({id:z.string(),mountId:z.string(),generation:z.string(),principal:z.string(),access:z.enum(['observe','call']),released:z.boolean()}).strict()),

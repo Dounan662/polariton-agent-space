@@ -43,7 +43,7 @@ async function fixture(t:TestContext,options:{idleMs?:number|null;initial?:boole
  const agents=new AgentManager(config,tree,async()=>false,factory,{clock});
  const worker=options.initial?agents.ensureInitialWorker(project.id,node):agents.create(project.id,node,randomUUID(),{title:'Analyst',systemPrompt:{text:'Keep this role',sourcePath:'/captured.md'}});
  const view=()=>agents.get(worker.id),send=(text:string)=>agents.submit(project.id,node,worker.id,{id:randomUUID(),text});
- t.after(async()=>{for(const h of harnesses){h.reserveGate?.resolve();h.closeGate?.resolve();h.complete();}await agents.close();tree.close();await rm(root,{recursive:true,force:true});});
+ t.after(async()=>{for(const h of harnesses){h.reserveGate?.resolve();h.closeGate?.resolve();h.complete();}await agents.close();await tree.close();await rm(root,{recursive:true,force:true});});
  const first=await send('Initial task');await until(()=>view().state==='running');const h=harnesses[0]!;h.complete();await until(()=>(config.workerIdleUnloadMs===null||clock.tasks.size===1)&&view().submissions.find(s=>s.id===first.id)?.state==='applied');
  return {config,clock,tree,agents,project:project.id,node,worker,h,harnesses,view,send};
 }

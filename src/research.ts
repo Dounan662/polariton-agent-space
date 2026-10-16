@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdir, readFile, writeFile, open, stat, readdir, realpath, chmod, rm, lstat, rename, link, unlink } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, open, stat, readdir, realpath, lstat, rename, link, unlink } from 'node:fs/promises';
 import { resolve, join, relative, dirname, isAbsolute } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -10,7 +10,8 @@ import { tryLockExclusive } from '@deepseek-ai/node-addon-system/flock';
 import { z } from 'zod';
 import { Operations, type Actor } from './operations.ts';
 import { Fault, Id, Text, Mutation, type Project, type Graph, Checkpoint, CheckpointPublication, type WorkspaceEntry, type FilePage, UploadPublication, type UploadReceipt } from './contracts.ts';
-import { SnapshotCapture, type SnapshotFile } from './checkpoint-capture.ts';
+import { GitCheckpoints } from './git-checkpoints.ts';
+import { CheckpointContent } from './checkpoint-content.ts';
 import type { Config } from './config.ts';
 
 const execute = promisify(execFile);
@@ -21,14 +22,18 @@ const RecordSchema = z.object({ version: z.literal(1), seq: z.number().int().pos
 type State = { graph: Graph; receipts: Map<string, string> };
 type Journal = { id: string; project: string; node: string; kind: string; payload: string; state: string };
 
-/** Owns graph authority and durable workspace publication. Cooperative captures
- * exclude other publishers, never worker execution or ordinary file edits. */
+/** Owns graph authority and durable workspace publication. Publications exclude
+ * other publishers, never worker execution or ordinary file edits. */
 export class ResearchTree extends EventEmitter {
   private db: DatabaseSync;
   private states = new Map<string, State>();
   private tails = new Map<string, Promise<unknown>>();
   private publishing = new Set<string>();
-  private captures = new AbortController();
+  private publications = new AbortController();
+  private pendingPublications = new Set<Promise<Checkpoint>>();
+  private checkpointStore: GitCheckpoints;
+  private checkpointContent: CheckpointContent;
+  private closing?: Promise<void>;
   private config: Config;
   private lock: number | null = null;
   private relocated = new Set<string>();
@@ -40,11 +45,13 @@ export class ResearchTree extends EventEmitter {
     this.config = config;
     this.clock = clock;
     this.db = new DatabaseSync(join(config.stateRoot, 'research.sqlite'));
+    this.checkpointStore = new GitCheckpoints(this.db, config, clock);
+    this.checkpointContent = new CheckpointContent(config);
   }
   /** Open the current registry or create it atomically; no prior-build data is converted. */
   private initializeRegistry() {
     const version = (this.db.prepare('PRAGMA user_version').get() as {user_version:number}).user_version;
-    if (version === 4) { this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;'); return; }
+    if (version === 5) { this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;'); return; }
     if (version !== 0 || this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' LIMIT 1").get()) {
       throw new Fault('STORAGE_VERSION', 'Unsupported research storage; use a fresh state directory for this build');
     }
@@ -59,7 +66,7 @@ export class ResearchTree extends EventEmitter {
         CREATE TABLE uploads(id TEXT PRIMARY KEY, project TEXT NOT NULL, node TEXT NOT NULL, payload TEXT NOT NULL, bytes INTEGER NOT NULL, state TEXT NOT NULL);`);
       this.db.prepare('INSERT INTO registry_metadata VALUES (?,?)').run('stateRoot',this.config.stateRoot);
       Operations.create(this.db);
-      this.db.exec('PRAGMA user_version=4; COMMIT');
+      this.db.exec('PRAGMA user_version=5; COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
   async initialize() {
@@ -103,9 +110,8 @@ export class ResearchTree extends EventEmitter {
         if (!state?.graph.recovery) await this.mutate(row.project, Mutation.parse(JSON.parse(row.payload))).catch(error => {
           this.emit('recovery', { operationId: row.id, error: String(error) });
         });
-      } else {
-        const saved = Checkpoint.parse(JSON.parse(row.payload));
-        try { await this.retainCheckpoint(row.project, saved); }
+      } else if (row.kind === 'checkpoint') {
+        try { await this.checkpointStore.recover(row.project, row.node, this.workspace(row.project,row.node,'write'), row.id, this.publications.signal); }
         catch (error) { this.emit('recovery', { operationId: row.id, error: String(error) }); }
       }
     }
@@ -227,14 +233,6 @@ export class ResearchTree extends EventEmitter {
     const path=join(project.root,'.polariton/owner.lock'), fd=openSync(path,'a',0o600);
     try { await tryLockExclusive(fd); const held=fstatSync(fd),current=statSync(path); if(held.ino!==current.ino||held.dev!==current.dev) throw new Error('Project lock changed'); this.projectLocks.set(project.id,fd); }
     catch { closeSync(fd); throw new Fault('PROJECT_OWNED','Another MainDaemon owns this project'); }
-    // After ownership is recovered, no prior daemon can publish from its scratch
-    // indexes. Git objects and the durable candidate journal live elsewhere.
-    const metadata = join(project.root, '.polariton');
-    for (const entry of await readdir(metadata, {withFileTypes:true})) {
-      const match = /^index-([a-f0-9-]{36})-[A-Za-z0-9]+$/.exec(entry.name);
-      if (entry.isDirectory() && match && Id.safeParse(match[1]).success)
-        await rm(join(metadata, entry.name), {recursive:true,force:true});
-    }
   }
   private writable(project: string) {
     const value=this.roots.get(project);
@@ -365,32 +363,20 @@ export class ResearchTree extends EventEmitter {
         if (prior && (prior.project !== project || prior.payload !== encoded)) throw new Fault('OPERATION_CONFLICT', 'Provisioning operation has different content');
         this.db.prepare('INSERT OR IGNORE INTO operations VALUES (?,?,?,?,?,?)').run(mutation.operationId, project, c.id, 'node', encoded, 'pending');
         const workspace = this.path(project, c.id);
-        try { await stat(join(workspace, '.git')); }
-        catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-          await mkdir(workspace, { recursive: true });
-          if (c.source) {
-            const checkpoint = this.checkpoints(project, c.source.nodeId).find(v => v.id === c.source!.checkpointId);
-            if (!checkpoint) throw new Fault('CHECKPOINT_NOT_FOUND', 'Select an existing published checkpoint');
-            const source = this.workspace(project, c.source.nodeId);
-            for (const file of checkpoint.files) {
-              const data = await this.gitBytes(source, ['show', `${checkpoint.commit}:${file}`]);
-              const target = this.contained(workspace, file); await mkdir(dirname(target), { recursive: true });
-              try { await writeFile(target, data, { flag: 'wx' }); }
-              catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || !data.equals(await readFile(target))) throw new Fault('PROVISION_CONFLICT', 'Interrupted inheritance conflicts with existing files'); }
-              const mode = (await this.git(source, ['ls-tree', checkpoint.commit, '--', file])).split(' ')[0];
-              await chmod(target, mode === '100755' ? 0o755 : 0o644);
-              const copied = await open(target, 'r'); try { await copied.sync(); } finally { await copied.close(); }
-              for (let dir = dirname(target); dir !== workspace; dir = dirname(dir)) await this.syncDirectory(dir);
-            }
-          }
+        await mkdir(workspace, { recursive: true });
+        if (c.source) {
+          const checkpoint = this.checkpoints(project, c.source.nodeId).find(value => value.id === c.source!.checkpointId);
+          if (!checkpoint) throw new Fault('CHECKPOINT_NOT_FOUND', 'Select an existing published checkpoint');
+          await this.checkpointContent.initializeFromCheckpoint(this.workspace(project,c.source.nodeId),checkpoint.commit,workspace,this.publications.signal);
+        } else {
           await this.git(workspace, ['init', '--quiet']);
-        }
-        let initialized = false;
-        try { await this.git(workspace, ['rev-parse', '--verify', 'HEAD']); initialized = true; } catch { /* An interrupted git init is completed from retained files below. */ }
-        if (!initialized) {
-          await this.git(workspace, ['add', '--all', '--force']);
-          await this.git(workspace, ['-c', 'user.name=Polariton', '-c', 'user.email=polariton@localhost', 'commit', '--quiet', '--allow-empty', '-m', 'Initialize independent research workspace']);
+          let initialized = false;
+          try { await this.git(workspace, ['rev-parse', '--verify', 'HEAD']); initialized = true; }
+          catch { /* An interrupted initial publication can be completed from its files. */ }
+          if (!initialized) {
+            await this.git(workspace, ['add', '--all']);
+            await this.git(workspace, ['-c', 'user.name=Polariton', '-c', 'user.email=polariton@localhost', 'commit', '--quiet', '--allow-empty', '-m', 'Initialize independent research workspace']);
+          }
         }
         await this.syncDirectory(workspace); await this.syncDirectory(dirname(workspace));
       }
@@ -441,11 +427,11 @@ export class ResearchTree extends EventEmitter {
         signal?.throwIfAborted();
         if (entry.name === '.git' || entry.name === '.polariton') continue;
         const path = join(dir, entry.name);
-        if (entry.isSymbolicLink() || (!entry.isDirectory() && !entry.isFile())) throw new Fault('UNSUPPORTED_FILE', 'Workspace contains a symlink or special file; remove it from the selected workspace before checkpointing');
+        if (entry.isSymbolicLink() || (!entry.isDirectory() && !entry.isFile())) throw new Fault('UNSUPPORTED_FILE', 'Workspace upload inventory contains a symlink or special file');
         if (entry.isDirectory()) await walk(path);
         else {
           bytes += (await stat(path)).size; result.push(relative(root, path));
-          if (bytes > this.config.maxWorkspaceBytes || result.length > this.config.maxWorkspaceFiles) throw new Fault('WORKSPACE_LIMIT', 'Workspace exceeds configured capture budget');
+          if (bytes > this.config.maxWorkspaceBytes || result.length > this.config.maxWorkspaceFiles) throw new Fault('WORKSPACE_LIMIT', 'Workspace exceeds configured upload budget');
         }
       }
     };
@@ -454,8 +440,8 @@ export class ResearchTree extends EventEmitter {
   async file(project: string, node: string, path: string): Promise<Buffer> {
     return (await this.readWorkspaceFile(project, node, path)).bytes;
   }
-  /** Binds bytes, executable mode and change evidence to the same open file. */
-  private async readWorkspaceFile(project: string, node: string, path: string, signal?: AbortSignal): Promise<SnapshotFile> {
+  /** Binds bounded preview bytes and change evidence to the same open file. */
+  private async readWorkspaceFile(project: string, node: string, path: string, signal?: AbortSignal): Promise<{bytes:Buffer;version:string}> {
     try {
       signal?.throwIfAborted();
       const root = await this.observationPath(project, node), target = this.contained(root, path);
@@ -478,7 +464,7 @@ export class ResearchTree extends EventEmitter {
         if (after.size !== info.size || after.mtimeNs !== info.mtimeNs || after.ctimeNs !== info.ctimeNs || after.mode !== info.mode || binding.ino !== info.ino || binding.dev !== info.dev)
           throw new Fault('FILE_CHANGED', 'File changed during read; retry its preview', 409);
         signal?.throwIfAborted();
-        return { bytes: Buffer.concat(chunks), mode: info.mode & 0o111n ? '100755' : '100644',
+        return { bytes: Buffer.concat(chunks),
           version: `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}:${info.mode}` };
       }
       finally { await file.close(); }
@@ -600,65 +586,39 @@ export class ResearchTree extends EventEmitter {
     return (this.db.prepare('SELECT data FROM checkpoints WHERE project=? AND node=? ORDER BY created DESC,id').all(project, node) as {data:string}[])
       .map(row => Checkpoint.parse(JSON.parse(row.data)));
   }
-  /** Publishes a shared-node snapshot during active work. A retry recovers its
-   * selected immutable candidate; it never silently substitutes newer files. */
-  async checkpoint(project: string, node: string, id: string, raw: CheckpointPublication): Promise<Checkpoint> {
-    Id.parse(id);
-    const publication = CheckpointPublication.parse(raw);
-    const workspace = this.workspace(project, node, 'write');
-    const pending = this.db.prepare('SELECT * FROM operations WHERE id=?').get(id) as Journal | undefined;
-    let saved: Checkpoint | undefined;
-    if (pending) {
-      if (pending.project !== project || pending.node !== node || pending.kind !== 'checkpoint') throw new Fault('OPERATION_CONFLICT', 'Checkpoint identity belongs to another operation');
-      saved = Checkpoint.parse(JSON.parse(pending.payload));
-      if (saved.publisher.kind !== publication.publisher.kind || saved.publisher.id !== publication.publisher.id || saved.note !== (publication.note ?? null))
-        throw new Fault('OPERATION_CONFLICT', 'Checkpoint identity belongs to different publication input or publisher');
-      if (pending.state === 'complete') return saved;
-    }
-    const key = `${project}/${node}`;
-    if (this.publishing.has(key)) throw new Fault('CHECKPOINT_BUSY', 'Another workspace publication is in progress; retry this request after it settles', 409);
-    this.publishing.add(key);
-    try {
-      if (!saved) {
-        const candidate = await new SnapshotCapture(this.config, this.clock).capture(workspace,
-          join(this.path(project), '.polariton', `index-${id}`), {
-            files: signal => this.files(project, node, signal),
-            read: (path, signal) => this.readWorkspaceFile(project, node, path, signal),
-          }, this.captures.signal);
-        const commit = (await this.git(workspace, ['-c', 'user.name=Polariton', '-c', 'user.email=polariton@localhost', 'commit-tree', candidate.tree, '-m', `Shared workspace checkpoint ${id}`], this.captures.signal)).trim();
-        this.captures.signal.throwIfAborted();
-        saved = Checkpoint.parse({ id, nodeId: node, commit, createdAt: this.clock(), files: candidate.files,
-          publisher: publication.publisher, note: publication.note ?? null, capture: candidate.capture });
-        this.db.prepare('INSERT INTO operations VALUES (?,?,?,?,?,?)').run(id, project, node, 'checkpoint', JSON.stringify(saved), 'pending');
-      }
-      await this.retainCheckpoint(project, saved);
-      return saved;
-    } finally { this.publishing.delete(key); }
-  }
-  /** Completes an exact retained candidate, including recovery before its ref was
-   * created. A conflicting ref is evidence of corruption, never permission to replace it. */
-  private async retainCheckpoint(project: string, saved: Checkpoint) {
-    const workspace = this.workspace(project, saved.nodeId), ref = `refs/polariton/checkpoints/${saved.id}`;
-    try { await this.git(workspace, ['update-ref', ref, saved.commit, '0'.repeat(saved.commit.length)], this.captures.signal); }
-    catch (error) {
-      let current: string;
-      try { current = (await this.git(workspace, ['rev-parse', '--verify', ref], this.captures.signal)).trim(); }
-      catch { throw error; }
-      if (current !== saved.commit) throw new Fault('CHECKPOINT_REF_CONFLICT', 'Retained checkpoint reference differs from its publication journal');
-    }
-    this.captures.signal.throwIfAborted();
-    this.completeCheckpoint(project, saved);
-    this.emit('change');
-  }
-  private completeCheckpoint(project: string, saved: Checkpoint) {
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      this.db.prepare('INSERT OR IGNORE INTO checkpoints VALUES (?,?,?,?,?)').run(saved.id, project, saved.nodeId, saved.createdAt, JSON.stringify(saved));
-      this.db.prepare("UPDATE operations SET state='complete' WHERE id=?").run(saved.id); this.db.exec('COMMIT');
-    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  /** Publishes shared Git progress and retains its exact identity. Per-node
+   * exclusion covers uploads and checkpoints while worker execution continues. */
+  checkpoint(project: string, node: string, id: string, raw: CheckpointPublication): Promise<Checkpoint> {
+    const operation = (async () => {
+      Id.parse(id);
+      const publication = CheckpointPublication.parse(raw);
+      const workspace = this.workspace(project,node,'write');
+      if (this.publications.signal.aborted) throw new Fault('CHECKPOINT_CANCELLED','Research storage is closing.',409);
+      const key = `${project}/${node}`;
+      if (this.publishing.has(key)) throw new Fault('CHECKPOINT_BUSY','Another workspace publication is in progress; retry this request.',409);
+      this.publishing.add(key);
+      try {
+        const checkpoint = await this.checkpointStore.publish(project,node,workspace,id,publication,this.publications.signal);
+        this.emit('change');
+        return checkpoint;
+      } finally { this.publishing.delete(key); }
+    })();
+    this.pendingPublications.add(operation);
+    return operation.finally(() => this.pendingPublications.delete(operation));
   }
   private async syncDirectory(path: string) { const dir = await open(path, 'r'); try { await dir.sync(); } finally { await dir.close(); } }
   private async git(path: string, args: string[], signal?: AbortSignal) { return (await execute('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsync=all', '-c', 'core.fsyncMethod=fsync', '-C', path, ...args], { env: gitEnv(), signal, timeout: this.config.requestTimeoutMs, maxBuffer: this.config.maxWorkspaceBytes })).stdout; }
-  private async gitBytes(path: string, args: string[]) { return (await execute('git', ['-C', path, ...args], { env: gitEnv(), encoding: 'buffer', timeout: this.config.requestTimeoutMs, maxBuffer: this.config.maxFileBytes })).stdout; }
-  close() { this.captures.abort(); for(const fd of this.projectLocks.values()) closeSync(fd); this.projectLocks.clear(); this.db.close(); if (this.lock !== null) { closeSync(this.lock); this.lock = null; } }
+  /** Stop accepting publications before transports drain their active requests. */
+  stopPublications(): void { this.publications.abort(); }
+
+  /** Cancel owned Git work and drain its processes before releasing storage locks. */
+  close(): Promise<void> {
+    return this.closing ??= (async () => {
+      this.stopPublications();
+      await Promise.allSettled([...this.pendingPublications, ...this.tails.values()]);
+      for (const fd of this.projectLocks.values()) closeSync(fd);
+      this.projectLocks.clear(); this.db.close();
+      if (this.lock !== null) { closeSync(this.lock); this.lock = null; }
+    })();
+  }
 }

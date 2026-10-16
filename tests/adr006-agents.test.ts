@@ -102,7 +102,7 @@ async function fixture(t: TestContext, overrides: Partial<Config> = {}) {
   };
   let agents = new AgentManager(config, tree, async () => { admission++; return false; }, factory);
   agents.on('failure', () => {});
-  t.after(async () => { await agents.close(); tree.close(); await rm(root, { recursive: true, force: true }); });
+  t.after(async () => { await agents.close(); await tree.close(); await rm(root, { recursive: true, force: true }); });
   const first = agents.create(project.id, node, id(), {title:'First'}), second = agents.create(project.id, node, id(), {title:'Second'});
   return { root, config, tree, id, project: project.id, node, otherNode, first, second, harnesses,
     get agents() { return agents; }, get launches() { return launches; }, get admission() { return admission; },

@@ -27,7 +27,7 @@ async function fixture(t:TestContext){
   launches.push({instructions:settings.workerInstructions,sharedSkillsDir:settings.sharedSkillsDir,model:(settings.selectedModel?JSON.parse(settings.selectedModel)[1] as string:settings.model),harness});didLaunch();return harness;
  };
  let agents=new AgentManager(config,tree,async()=>false,factory);
- t.after(async()=>{for(const launch of launches)launch.harness.complete();await agents.close();tree.close();await rm(root,{recursive:true,force:true});});
+ t.after(async()=>{for(const launch of launches)launch.harness.complete();await agents.close();await tree.close();await rm(root,{recursive:true,force:true});});
  return {root,config,tree,project:project.id,node,launches,launched,get agents(){return agents;},async restart(){await agents.close();agents=new AgentManager(config,tree,async()=>false,factory);await agents.initialize();}};
 }
 

@@ -16,8 +16,8 @@ test('compact research receipts identify only the affected graph entity and pres
   ['relation.create',{project:node},edge.id],['relation.update',{target:edge.id,project:node},edge.id],['relation.retract',{target:edge.id,project:node},edge.id],
  ] as const){const view=compactReceipt(receipt(command,input,graph));assert(view.result&&'id' in view.result);assert.equal(view.result.id,id);assert.match(view.inspect.resource!,/graph get/);assert.equal('nodes' in view.result!,false);assert.equal('explanation' in view.result!,false);}
  const repair=compactReceipt(receipt('graph.repair-tail',{project:node},graph));assert(repair.result&&'revision' in repair.result);assert.equal(repair.result.revision,3);
- const checkpoint=compactReceipt(receipt('checkpoint.publish',{node,note:'Unfinished research'}, {id:request,nodeId:node,commit:'a'.repeat(40),files:['first','second'],publisher:{kind:'owner',id:'local-owner'},note:'Unfinished research',createdAt:1}));
- assert(checkpoint.result&&'fileCount' in checkpoint.result&&'commit' in checkpoint.result);assert.equal(checkpoint.result.fileCount,2);assert.equal(checkpoint.result.commit,'a'.repeat(40));assert.match(checkpoint.inspect.resource!,/checkpoint get.*--node/);assert.equal('files' in checkpoint.result!,false);
+ const checkpoint=compactReceipt(receipt('checkpoint.publish',{node,note:'Unfinished research'}, {id:request,nodeId:node,commit:'a'.repeat(40),publisher:{kind:'owner',id:'local-owner'},note:'Unfinished research',createdAt:1}));
+ assert(checkpoint.result&&'commit' in checkpoint.result);assert.equal('fileCount' in checkpoint.result,false);assert.equal(checkpoint.result.commit,'a'.repeat(40));assert.match(checkpoint.inspect.resource!,/checkpoint get.*--node/);assert.equal('files' in checkpoint.result!,false);
 });
 
 test('compact infrastructure receipts retain identity, readiness and specific failures without definitions or credentials',()=>{
@@ -48,4 +48,23 @@ test('compact lifecycle receipts retain peer errors and settled state without st
  assert.deepEqual(failed.result,{environment:{state:'failed',error:'Startup failed'}});
  const stopped=compactReceipt(receipt('daemon.stop',{target:'all'},{startup:{main:{state:'running',status:{pid:17}},environment:{state:'running'}},settlement:{main:{state:'stopped'},environment:{state:'stopped'}}}));
  assert.deepEqual(stopped.result,{startup:{main:{state:'running',status:{pid:17}},environment:{state:'running'}},settlement:{main:{state:'stopped'},environment:{state:'stopped'}}});
+});
+
+test('compact preparation keeps actionable recovery and distinct evidence while detailed definitions remain opt-in',()=>{
+ const evidence={registered:true,dependencies:'unavailable',connection:'untested',tools:[],authentication:'not-required',checks:[{name:'browse',status:'not-run'}],observedAt:null};
+ const action={id:'node',componentId:'browser',kind:'toolchain',tool:'node',code:'PACKAGE_TOOL_MISSING',message:'Node is unavailable',actor:'initiator',next:'harnessctl operation continue environment:example --input resolution.json'};
+ const result={status:'blocked',version:2,environmentId:'browser',revisionId:'rev',components:[{id:'browser',name:'Browser',source:{kind:'npm',identifier:'@playwright/mcp',version:'0.0.83'},runtime:{kind:'local'},connection:{kind:'stdio',args:[],env:{}},requirements:{files:[],identityFiles:[],assets:[],nativeBuild:false},authentication:{kind:'none'},checks:[],capabilityId:'cap',capabilityRevisionId:'cap-rev',evidence,error:{code:'PACKAGE_TOOL_MISSING',message:'Node is unavailable'}}],actions:[action],defaults:['Separate access storage'],connection:'untested',operationId:request};
+ const view=compactReceipt(receipt('environment.prepare',{name:'Browser',source:'npm:@playwright/mcp@0.0.83'},result,'partial'));
+ assert(view.result&&'actions' in view.result);assert.deepEqual(view.result.actions,[action]);assert.equal(view.result.version,2);assert.deepEqual(view.result.components[0]?.evidence,evidence);
+ assert(!('source' in view.result.components[0]!));assert.match(view.inspect.resource!,/environment inspect.*--revision/);
+ const validation={environmentId:'browser',revisionId:'rev',observedAt:'2026-10-13T12:00:00Z',scope:'discovery',components:[{componentId:'browser',connected:true,tools:['browser_navigate'],check:null,error:null,cleanup:'settled'}]};
+ assert.deepEqual(compactReceipt(receipt('environment.validate',{target:'browser',revision:'rev'},validation)).result,validation);
+ const cancelled=compactReceipt(receipt('operation.cancel',{target:`environment:${request}`},{cancelled:true,operation:`environment:${request}`}));
+ assert.deepEqual(cancelled.result,{cancelled:true,operation:`environment:${request}`});assert.match(cancelled.inspect.resource!,/operation get 'environment:/);
+});
+
+test('standalone capability receipts retain source-independent setup identity without an environment link',()=>{
+ const result={status:'draft',version:0,environmentId:null,revisionId:null,components:[{id:'tool',name:'Mail',source:{kind:'endpoint',url:'https://example.com/mcp'},runtime:{kind:'external'},connection:{kind:'http',headers:{}},requirements:{files:[],identityFiles:[],assets:[],nativeBuild:false},authentication:{kind:'none'},checks:[],capabilityId:null,capabilityRevisionId:null,evidence:{registered:false,dependencies:'unprepared',connection:'untested',tools:[],authentication:'not-required',checks:[],observedAt:null},error:null}],actions:[],defaults:[],connection:'untested',operationId:`environment:${request}`};
+ const view=compactReceipt(receipt('capability.add',{name:'Mail',source:'https://example.com/mcp'},result,'waiting'));
+ assert(view.result&&'environmentId' in view.result&&'status' in view.result);assert.equal(view.result.environmentId,null);assert.equal(view.result.status,'draft');assert.equal(view.inspect.resource,undefined);assert.match(view.inspect.operation,/operation get/);
 });

@@ -28,7 +28,7 @@ test(`a copied ${registration} registry cannot recreate or mutate an unavailable
     const project=await original.createProject(randomUUID(),'External research',join(root,'external-project'));
     projectId=project.id;projectRoot=project.root;
     await original.mutate(projectId,{operationId:randomUUID(),revision:0,command:{kind:'node.create',id:randomUUID(),title:'Existing work',description:''}});
-  } finally {original.close();}
+  } finally {await original.close();}
   const graphPath=join(projectRoot,'.polariton/graph.jsonl'),before=await readFile(graphPath),nodes=await readdir(join(projectRoot,'nodes'));
   await cp(stateRoot,copyRoot,{recursive:true});
   if (registration === 'creating') {
@@ -50,7 +50,7 @@ test(`a copied ${registration} registry cannot recreate or mutate an unavailable
     assert.equal(copy.mainNode(projectId),null);
     assert.deepEqual(await readFile(graphPath),before);
     assert.deepEqual(await readdir(join(projectRoot,'nodes')),nodes);
-  } finally {copy.close();}
+  } finally {await copy.close();}
 });
 }
 

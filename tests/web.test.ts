@@ -182,7 +182,7 @@ test('browser publishes during an active worker turn and derives publisher from 
   assert.equal(published.statusCode,200,published.body);
   const checkpoint=published.json();
   assert.deepEqual(checkpoint.publisher,{kind:'owner',id:'local-owner'});
-  assert.equal(checkpoint.note,payload.note);assert.equal(checkpoint.capture.consistency,'cooperative-verified');
+  assert.equal(checkpoint.note,payload.note);assert.equal('capture' in checkpoint,false);assert.equal('files' in checkpoint,false);
   assert.equal(b.runtime.agents.get(worker).state,'running');
   assert.deepEqual((await b.request({method:'POST',url:`${base}/checkpoints`,payload})).json(),checkpoint);
   assert.deepEqual((await b.request({method:'GET',url:`${base}/checkpoints`})).json(),[checkpoint]);

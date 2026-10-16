@@ -43,6 +43,8 @@ const files=[
   "config/adr018-campaign.json",
   "config/adr025-live.json",
   "config/adr027-validation.json",
+  "config/adr031-live.json",
+  "config/adr031-authoring-live.json",
   "config/app.json",
   "config/browser-verification.json",
   "config/deployment.json",

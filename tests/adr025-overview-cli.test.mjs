@@ -31,7 +31,7 @@ async function fixture(t){
  const environment={callAs(){throw new Error('Overview must not contact EnvironmentDaemon');},choices(){throw new Error('Overview must not contact EnvironmentDaemon');}};
  const snapshots=await CanvasSnapshots.open(config.stateRoot,config.canvas,error=>{throw error;});t.after(()=>snapshots.close());
  const access=new CallerAccess(config);await access.initialize();const operations=new MainOperations(config,tree,agents,projects,environment,new CanvasBridge(config.canvas),snapshots),app=await serveApplication(config,access,operations);
- t.after(async()=>{await app.close();for(const h of harnesses)h.complete();await agents.close();tree.close();await rm(root,{recursive:true,force:true});});
+ t.after(async()=>{await app.close();for(const h of harnesses)h.complete();await agents.close();await tree.close();await rm(root,{recursive:true,force:true});});
  async function cli(args,overrides={}){const env={...process.env};for(const key of ['HARNESSCTL_TOKEN','HARNESSCTL_CONFIG','DSH_HARNESSCTL_TOKEN','DSH_SHELL'])delete env[key];const child=spawn(process.execPath,[executable,'--config',configPath,...args],{cwd:root,env:{...env,...overrides},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.on('data',chunk=>stdout+=chunk);child.stderr.on('data',chunk=>stderr+=chunk);const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});assert.ok(stdout.trim(),stderr);return {code,value:JSON.parse(stdout),bytes:Buffer.byteLength(stdout),stderr};}
  return {root,config,tree,project:project.id,node,agents,worker,harnesses,access,cli,setProjectFailure(value){projectFailure=value;}};
 }

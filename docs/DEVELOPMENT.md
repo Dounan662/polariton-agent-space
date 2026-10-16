@@ -29,7 +29,11 @@ Development data is separate from normal data; see [storage](STORAGE.md).
 
 Run checks affected by your change. For ordinary code contributions, run source
 checks, build, and the default suite. Documentation-only changes need link and
-content review. The source scanner is not a complete secret audit; inspect your diff.
+content review. The source scanner excludes regular `.DS_Store` files, the root
+`.trunk/` directory and generated output. It still rejects source symlinks (including
+symlinks named `.DS_Store` or `.trunk`), credential files, detected secrets, private
+machine paths and broken local Markdown links. It does not skip arbitrary
+Git-ignored files. This is not a complete secret audit; inspect your diff.
 
 Tests require loopback networking, Unix sockets, and subprocess access. They do
 not need provider keys. Container, installed-service, and live-provider scenarios
@@ -81,6 +85,9 @@ lockfile, Harness integration, readable session format, and compatibility checks
 Regeneration is not a test and must never substitute for compatibility verification.
 
 For adapted presentation code, preserve licenses and review the per-file provenance
-in `web/src/native/ORIGIN.json`. Do not refresh hashes merely to bypass a build error.
+in `web/src/native/ORIGIN.json`. The adapted MCP client also has license and
+per-file provenance in `harness/native/MCP-LICENSE` and `MCP-ORIGIN.json`; preserve
+and review those with authentication, connection or cleanup changes.
+Do not refresh hashes merely to bypass a build error.
 Data-format changes need an explicit preservation and compatibility decision;
 never erase user data to make a test or startup pass.

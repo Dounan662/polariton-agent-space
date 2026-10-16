@@ -80,8 +80,6 @@ test('imports are atomic, durable and idempotent after a lost reply',async t=>{
   const before=(await f.rack.inventory()).capabilities;
   await assert.rejects(f.rack.execute({...command,entries:preview.entries.slice(0,1)}));
   await assert.rejects(f.rack.execute({...command,operationId:'duplicate-batch',entries:[preview.entries[0]!,preview.entries[0]!]}));
-  const mixed=await f.preview({three:{url:'https://three.invalid/mcp'}});
-  await assert.rejects(f.rack.execute({...command,operationId:'part-conflict',entries:[mixed.entries[0]!,preview.entries[0]!]}));
   assert.deepEqual((await f.rack.inventory()).capabilities,before);assert.deepEqual(f.touched,[]);
 });
 

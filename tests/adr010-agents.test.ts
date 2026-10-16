@@ -57,7 +57,7 @@ async function fixture(t:TestContext){
   const worker=agents.create(project.id,node,randomUUID(), {title:'Experiment'});
   const view=()=>agents.list(project.id,node).find(value=>value.id===worker.id)!;
   const submit=async(text='Measure and transform')=>{const id=randomUUID();await agents.submit(project.id,node,worker.id,{id,text});return id;};
-  t.after(async()=>{faults.wait?.resolve();faults.catalogWait?.resolve();faults.close=false;faults.release=false;for(const harness of harnesses)harness.complete();await agents.close();tree.close();await rm(root,{recursive:true,force:true});});
+  t.after(async()=>{faults.wait?.resolve();faults.catalogWait?.resolve();faults.close=false;faults.release=false;for(const harness of harnesses)harness.complete();await agents.close();await tree.close();await rm(root,{recursive:true,force:true});});
   return {project:project.id,node,worker:worker.id,tree,view,submit,faults,calls,released,active,harnesses,stored,
     get agents(){return agents;},get catalogs(){return catalogs;},get sessionCreates(){return sessionCreates;},
     async reopen(){await agents.close();agents=new AgentManager(config,tree,async()=>false,factory,{environment:access,catalog});await agents.initialize();},

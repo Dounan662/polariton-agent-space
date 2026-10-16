@@ -1,11 +1,11 @@
 # Compatibility and verification scope
 
-## Tested combinations
+## Platform baseline
 
 | Platform | Node | Status |
 | --- | --- | --- |
-| macOS arm64 | 24.11.0 | Repository build, default tests, startup smoke, and attachment persistence passed |
-| Ubuntu 26.04 amd64 | 24.21.0 | Repository build, default tests, startup smoke, and attachment persistence passed |
+| macOS arm64 | 24.11.0 | 2026-10-12 baseline build, tests, smoke and attachment check passed |
+| Ubuntu 26.04 amd64 | 24.21.0 | 2026-10-12 baseline build, tests, smoke and attachment check passed |
 | Ubuntu 24.04 amd64 | Node 24 | Implemented host profile; not fully verified |
 | Windows / macOS Intel | — | Unsupported |
 
@@ -18,6 +18,25 @@ The attachment check saved an image and file, persisted their session references
 then reopened both in a fresh process using the unchanged Harness package.
 It passed in standard production and development locations on both platforms.
 These results do not establish access in every sandbox or user-selected directory.
+
+## Capability and checkpoint upgrade scope
+
+The capability preparation upgrade was qualified on macOS arm64, including controlled
+OAuth discovery/refresh tests, explicit package examples, managed OCI lifecycle,
+committed Git tools and owner UI exercises. Its final full suite recorded 719 passes
+and five opt-in skips. These results do not certify arbitrary package versions or
+external OAuth providers. Google metadata and controlled protocol exchanges do not
+establish real Google consent or authenticated Workspace tool calls.
+
+The subsequent shared Git checkpoint upgrade was qualified by a local macOS build
+and full suite with 795 passes and five opt-in skips, plus 64 focused checkpoint
+regressions. This is upstream source qualification, not a claim of a fresh run in
+every copied checkout. It did not requalify Ubuntu deployment, live models or
+interactive browser behavior. Re-run current checks when distributing this source.
+
+Research storage is version **5** and Environment storage is version **9**. Earlier
+experimental data is preserved and rejected without migration. See
+[storage](STORAGE.md) and [feature limits](LIMITATIONS.md).
 
 ## Harness contract
 

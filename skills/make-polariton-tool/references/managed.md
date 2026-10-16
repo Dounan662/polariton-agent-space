@@ -6,6 +6,11 @@ to this reference directory. It includes the public binding-authorization server
 helper copied from Polariton, SDK/lockfile, executable server, manifest and MCP test.
 No Polariton source import or codebase inspection is required in the authored repository.
 
+The complete workflow is **author and test → commit → prepare → validate**. The
+current Git adapter builds a managed container and exposes HTTP MCP. It does not
+build a local stdio executable. An already provisioned local executable uses the
+separate installed-source path in [Capability preparation](preparation.md).
+
 ## Create and verify a workspace package
 
 Use a package directory in the current workspace's existing Git repository. Do not
@@ -56,8 +61,8 @@ explicit: disconnect or caller cancellation does not prove remote effects were u
 | `configSchema` | JSON Schema object for managed component `configuration` |
 | `mcpPath`, `port`, `state` | Exactly `"/mcp"`, `8080`, `"scratch"` |
 
-The starter contains the qualified digest-pinned Node image and exact MCP SDK 2.0.0,
-Zod 4.6.5 and MCP test client 2.0.0 dependencies. Its build uses `npm ci --ignore-scripts`,
+The starter's manifest pins the Node image by digest; `package.json` and its lockfile
+are the authority for exact SDK, validation and test-client versions. Its build uses `npm ci --ignore-scripts`,
 runs the actual MCP test, then removes development dependencies. The source snapshot is
 copied into a bounded writable build area; the completed artifact becomes read-only
 `/app` at runtime. Host node_modules, sibling repositories or local symlinks are not
@@ -78,21 +83,67 @@ are injected. Portable configuration has no host paths or credentials. Operation
 requiring host desktop access generally belong in an explicitly provisioned stdio or
 external HTTP integration, not an attempt to escape the managed-container contract.
 
-## Register and install the exact source
+## Prepare the committed tool
 
-Generate and retain a separate request UUID before registration and installation:
+After committing, resolve the absolute package directory containing
+`polariton-capability.json` and the full commit from `git rev-parse HEAD`. Save a
+preparation specification outside the package, such as `prepare-tool.json` at the
+workspace root. This complete example runs the unmodified starter; replace its
+source placeholders, names, configuration and check with the tool you authored:
 
-```sh
-harnessctl capability register --repository "$PWD" --request-id REGISTER_UUID
-harnessctl release install CAPABILITY_ID --commit EXACT_GIT_COMMIT --request-id INSTALL_UUID
-harnessctl release get RELEASE_ID
+```json
+{
+  "name": "Domain tools",
+  "description": "Tools authored in this workspace",
+  "components": [{
+    "id": "analysis",
+    "name": "Domain capability",
+    "source": {
+      "kind": "git",
+      "directory": "/absolute/workspace/capabilities/my-tool",
+      "commit": "EXACT_40_CHARACTER_COMMIT"
+    },
+    "runtime": {"kind": "container", "configuration": {"scale": 2}},
+    "connection": {"kind": "http"},
+    "requirements": {},
+    "authentication": {"kind": "none"},
+    "checks": [{
+      "name": "scale",
+      "effects": "read",
+      "steps": [{"tool": "scale_values", "arguments": {"values": [-2, 0, 3]}}]
+    }]
+  }]
+}
 ```
 
-Run registration from the package directory containing `polariton-capability.json`.
-The daemon resolves its enclosing Git root and relative package path. The registration
-receipt's `result.id` identifies the capability. Installation snapshots only that
-package from the exact commit; siblings and uncommitted files are excluded. Symlinks
-and submodules are unsupported package inputs. Keep all build inputs inside the package.
+`runtime.configuration` must match your manifest's `configSchema`; use `{}` when
+the tool has no configuration. The starter requires `scale`, but your tool need
+not. The managed runtime supplies the endpoint and binding authorization; omit a
+URL and headers. Here `authentication:none` means no additional user account login,
+not an unprotected managed server. This adapter does not inject external account
+credentials. Functional checks name raw MCP tools and declare their actual effects.
+
+```sh
+harnessctl environment prepare --input prepare-tool.json
+```
+
+This one operation registers the source, installs its immutable release, publishes
+the environment and prepares the managed runtime. Do not separately register,
+install, publish or Apply for this common workflow. The expert operations remain
+available through CLI help and [Environment operations](environment.md).
+
+Preparation generates a request UUID and emits its recovery reference on stderr.
+Retain the response and that reference. A blocked/partial result is not completion:
+inspect it, resolve only the offered action, and follow
+[preparation recovery](preparation.md#continue-a-blocked-operation). After a lost
+reply, inspect `environment:REQUEST_UUID`; do not repeat with a fresh identity.
+Code changes require a new commit and preparation. To update an existing
+environment, supply its `target`, `expectRevision` and complete components as
+described in [Capability preparation](preparation.md#complete-specification).
+
+The daemon resolves the enclosing Git root and snapshots only the selected package
+at the exact commit. Siblings and uncommitted files are excluded. Symlinks and
+submodules are unsupported package inputs. Keep all build inputs inside the package.
 
 EnvironmentDaemon ensures its configured runtime is ready, then fetches the pinned
 image and locked packages and builds the release. Do not start Docker or Colima,
@@ -100,26 +151,32 @@ change Docker contexts, or broaden workspace permissions yourself. A missing run
 installation/profile or invalid configuration returns a concrete error for the
 operator; an ordinary stopped dedicated runtime starts automatically. External
 Docker engines remain operator-owned.
-The result retains repository/package identity, commit, artifact digest, runtime image
-and manifest.
-After a lost reply, inspect `environment:REQUEST_UUID` or repeat the identical
-command. Installing creates a retained release, not an environment or worker.
-
-Publish a managed component selecting that release with configuration matching the
-manifest; the starter requires `{"scale":2}`. Follow [Environment operations](environment.md)
-for publication and explicit Apply. Inspect bounded managed MCP resources with:
+The result retains exact environment/revision IDs. Its managed component's
+`capabilityId` selects the installed release; `release get` exposes source, commit,
+artifact and build provenance when needed. Successful preparation reports the
+connection as **untested**. Use the returned environment/revision, not a catalog
+name or a separately launched server:
 
 ```sh
-harnessctl mount observe MOUNT_ID --uri capability://version
+harnessctl environment inspect ENVIRONMENT_ID --revision REVISION_ID
+harnessctl environment validate ENVIRONMENT_ID --revision REVISION_ID --check scale
 ```
+
+Replace `scale` with the declared check name. Without `--check`, validation only
+connects and discovers tools. A named check invokes the tool and records whether
+the call succeeded; it is not a numerical-result assertion engine. Your MCP tests
+must verify the actual domain values, invalid inputs and failure boundaries.
 
 ## Completion evidence
 
-Verify meaningful operation results over MCP, not just a started process. The starter's
-`npm test` does this without an LLM, network service or Docker. Real managed Apply and
-observation separately verify the deployment boundary. Paid end-to-end worker tests
-use only an explicitly approved provider budget and independently checked tool receipts;
-ordinary installation does not require launching or assigning a consumer worker.
-Report what was tested, the exact source/release/environment identities and any missing
-operator-provisioning, domain-service or application prerequisites. Leave worker selection
-to the user. Preparation does not replace tools in an already active DSH session.
+Report the package directory, exact commit/release/environment/revision, MCP test
+results, functional validation and unresolved prerequisites. Keep connection,
+domain correctness and real-worker use distinct.
+
+Preparation and validation create no research workers. An active worker's tool set
+remains pinned, including the author who built the tool. When the task explicitly
+requests a real-worker test, create a separate consumer assigned the prepared exact
+environment revision through the public worker commands. Have it invoke MCP tools
+and retain actual results within the authorized provider budget. A shell import of
+your source or a direct HTTP request is not evidence that the assigned worker used
+the installed capability. Otherwise return the environment for user selection.

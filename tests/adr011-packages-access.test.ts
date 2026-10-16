@@ -34,7 +34,8 @@ test('one environment binds workspace arguments and environment values independe
   const f=await fixture(t),definition=await f.capability(['--root','${POLARITON_WORKSPACE}/data'],{WORK_DIRECTORY:'${POLARITON_WORKSPACE}'}),revision=await f.published(definition);
   const a=stdio(await f.rack.acquireAccess(f.request(revision,'worker-a'))),b=stdio(await f.rack.acquireAccess(f.request(revision,'worker-b',f.second)));
   assert.equal(a.command,b.command);assert.deepEqual(a.args,[f.script,'--root',`${f.first}/data`]);assert.deepEqual(b.args,[f.script,'--root',`${f.second}/data`]);
-  assert.deepEqual(a.env,[{name:'WORK_DIRECTORY',value:f.first}]);assert.deepEqual(b.env,[{name:'WORK_DIRECTORY',value:f.second}]);
+  const envA=Object.fromEntries(a.env.map(value=>[value.name,value.value])),envB=Object.fromEntries(b.env.map(value=>[value.name,value.value]));
+  assert.equal(envA.WORK_DIRECTORY,f.first);assert.equal(envB.WORK_DIRECTORY,f.second);assert.equal(envA.HOME,envA.TMPDIR);assert.equal(envB.HOME,envB.TMPDIR);assert.notEqual(envA.TMPDIR,envB.TMPDIR);assert((await stat(envA.TMPDIR!)).isDirectory());assert((await stat(envB.TMPDIR!)).isDirectory());
   const stored=await f.rack.capability(definition.id,definition.revisionId);assert('args' in stored!);assert.equal(stored.args[2],'${POLARITON_WORKSPACE}/data');
   await assert.rejects(f.rack.acquireAccess({...f.request(revision,'worker-a'),workspace:f.second}));
 });

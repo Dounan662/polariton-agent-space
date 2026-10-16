@@ -4,7 +4,8 @@ import {fileURLToPath} from 'node:url';
 import {fromMarkdown} from 'mdast-util-from-markdown';
 
 // Inspect the distributable source without starting services or visiting links.
-// Local generated directories are outside that source; secret files elsewhere
+// Local generated directories, root Trunk state and Finder metadata are outside
+// that source. Symlinks are still rejected before exclusions; secret files elsewhere
 // fail by name before their contents are read. This is not a complete secret audit.
 const root = fileURLToPath(new URL('../', import.meta.url));
 const generated = new Set(['node_modules', '.local', '.cache', '.npm-cache', 'dist', 'build', 'coverage', 'test-results', 'playwright-report', '.git']);
@@ -22,11 +23,12 @@ async function walk(directory) {
     const path = join(directory, entry.name), name = relative(root, path);
     if (entry.isSymbolicLink()) { problems.push(`${name}: source symlink`); continue; }
     if (entry.isDirectory()) {
-      if (!generated.has(entry.name)) await walk(path);
+      if (!generated.has(entry.name) && name !== '.trunk') await walk(path);
       continue;
     }
     if (!entry.isFile()) { problems.push(`${name}: nonregular source file`); continue; }
-    if (/^\.env(?:\.|$)/.test(entry.name) && !entry.name.endsWith('.example') || /^(?:\.credentials\.ya?ml|credentials\.env|\.npmrc|\.DS_Store)$/.test(entry.name)) {
+    if (entry.name === '.DS_Store') continue;
+    if (/^\.env(?:\.|$)/.test(entry.name) && !entry.name.endsWith('.example') || /^(?:\.credentials\.ya?ml|credentials\.env|\.npmrc)$/.test(entry.name)) {
       problems.push(`${name}: private or machine-local file`); continue;
     }
     checked++;

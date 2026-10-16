@@ -25,7 +25,7 @@ test('work waking during retained activation remains running while allowing chec
  }
  const harnesses:Awakening[]=[];
  const agents=new AgentManager(config,tree,async()=>false,(settings,home,_workspace,_budget,permission)=>{const h=new Awakening(`session-${basename(home)}`,permission,settings.model);harnesses.push(h);return h;});
- t.after(async()=>{harnesses.forEach(h=>h.complete());await agents.close();tree.close();await rm(root,{recursive:true,force:true});});
+ t.after(async()=>{harnesses.forEach(h=>h.complete());await agents.close();await tree.close();await rm(root,{recursive:true,force:true});});
  const worker=agents.create(project.id,node,randomUUID(),{title:'Retained work'});
  await agents.submit(project.id,node,worker.id,{id:randomUUID(),text:'Initial task'});
  while(agents.get(worker.id).state!=='running')await settle();harnesses[0]!.complete();

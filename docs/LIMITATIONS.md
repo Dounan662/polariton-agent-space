@@ -11,8 +11,14 @@ Polariton is a preview for a single owner on a trusted local machine. Read
   stored absolute paths; see [storage](STORAGE.md) before making changes.
 - Workers on one node share files. Checkpoints may contain other workers' unfinished
   edits. They do not establish exclusive authorship or freeze external writers.
-- Sustained writes can exhaust checkpoint capture retries. Inspect the result and
-  retry at a calmer editing boundary instead of assuming the checkpoint exists.
+- Checkpoints consume shared staging and follow Git ignore/filter/hook rules; they
+  are not raw workspace backups or concurrent-write certification. Avoid external
+  Git changes during publication. See [checkpoint semantics](GETTING_STARTED.md#save-a-checkpoint).
+- Unresolved publication recovery conflicts block new checkpoint identities on the
+  affected node, leaving ordinary file work available. Inspect the original receipt;
+  this preview has no automatic abandonment, history repair or user-facing repair flow.
+- Inheritance supports regular and executable files, not symlinks, submodules or
+  external Git LFS payloads. Large retained contents still require disk space and I/O.
 
 ## History and providers
 
@@ -32,10 +38,20 @@ Keys are plaintext with owner-only permissions, not an encrypted vault.
 ## Tools and access
 
 Host tools and same-user processes can access files with the user's authority.
-Filesystem checks and cooperative checkpoints are not protection against a hostile
+Filesystem checks and checkpoint publication are not protection against a hostile
 process running as that user. Managed containers and external MCP servers require
 separate trust and resource review. Multi-user or public internet hosting is outside
 this preview's operating boundary.
+
+Source adapters have bounded recipes: npm hooks are disabled, PyPI uses wheels,
+Cargo native builds require explicit authority, and MCPB supports manifest 0.3 direct
+entrypoints. Generic OCI supports prepared isolated stdio instances without network,
+host mounts, credential injection or persistent volumes. These new preparation paths
+have not been requalified on Ubuntu. Arbitrary OAuth providers are not certified;
+real Google consent and authenticated Workspace calls still require owner setup and
+verification. Account secrets use private files, not an OS keychain. Local disconnect
+cannot recall static credentials already copied into active processes; restart those
+workers, and separately revoke upstream credentials when necessary.
 
 Rootless/remote container engines and every third-party MCP integration are not
 covered by the tested platform combinations. The bundled official catalog is empty;

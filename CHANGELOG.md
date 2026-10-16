@@ -5,6 +5,23 @@ handled separately.
 
 ## Unreleased — first public preview
 
+- Open the selected node workspace in the system file manager from the workspace
+  toolbar, with authenticated node-scoped access and observable launch failures.
+- Preserve worker reading position when switching between conversation and trajectory.
+
+- Publish checkpoints through ordinary shared Git staging/history, preserving exact
+  retained commits and recovery identities. No-change publication reuses `HEAD`;
+  manual commits participate naturally, and preview limits no longer gate large
+  checkpoint publication or streamed inheritance.
+- Add daemon-owned capability preparation, preview, inspection, versioned continuation
+  and cancellation for explicit package, image, bundle, Git and endpoint sources.
+- Add separate connection/discovery and named functional validation without a model
+  call, plus capability-page account setup and scoped OAuth credential refresh.
+- Preserve exact capability/environment assignments through account or definition
+  updates. Preparation and owner authentication never silently move active workers.
+- Require fresh research format 5 and Environment format 9 state; retain incompatible
+  experiments without migration. New capability/checkpoint qualification is macOS only.
+
 - Store runtime data in standard macOS/Linux locations, with separate development
   profiles and temporary test storage. Preserve old data without automatic migration.
 - Add matching macOS and Ubuntu desktop quick starts for running from the repository.

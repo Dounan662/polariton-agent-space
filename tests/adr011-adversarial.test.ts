@@ -55,7 +55,7 @@ test('normalized import cannot omit a declared dependency from executable identi
   const f=await fixture(t),script=join(f.root,'server.mjs'),dependency=join(f.root,'dependency.mjs');await writeFile(script,'// controlled entry');await writeFile(dependency,'// dependency');
   const preview=await f.preview({local:{command:await realpath(process.execPath),args:[script],requirements:{identityFiles:[dependency]}}});assert.deepEqual(preview.errors,[]);
   const entry=preview.entries[0]!;assert.equal(entry.definition.kind,'stdio');if(entry.definition.kind!=='stdio')throw new Error();
-  entry.definition.identity.files=entry.definition.identity.files.filter(file=>file.path!==dependency);
+  assert(entry.definition.identity);entry.definition.identity.files=entry.definition.identity.files.filter(file=>file.path!==dependency);
   await assert.rejects(f.rack.execute({kind:'capability.import',operationId:'tampered',entries:[entry]}));
   assert.equal((await f.rack.inventory()).capabilities.length,0);
 });

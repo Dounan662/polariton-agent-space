@@ -1,33 +1,34 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
-import { mkdir, mkdtemp, readFile, writeFile, appendFile, readdir, rm, stat, chmod, symlink, cp } from 'node:fs/promises';
-import { join, dirname, basename } from 'node:path';
+import { mkdir, readFile, writeFile, appendFile, readdir, rm, stat, chmod, symlink, cp } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
 import { temporaryDirectory } from './fixtures/storage.ts';
+import { testDeadline } from './fixtures/timing.ts';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { DatabaseSync } from 'node:sqlite';
 import { owner } from '../src/caller.ts';
 import { ResearchTree } from '../src/research.ts';
-import { loadConfig } from '../src/config.ts';
+import { loadConfig, type Config } from '../src/config.ts';
 import type { Mutation } from '../src/contracts.ts';
 
 const execute = promisify(execFile);
 const fault = (code: string) => (error: unknown) => error instanceof Error && 'code' in error && error.code === code;
 
 /** Each test owns a real isolated store; identities encode fixture order, never wall-clock time. */
-async function fixture(t: TestContext, clock: () => number = Date.now) {
+async function fixture(t: TestContext, clock: () => number = Date.now, overrides: Partial<Config> = {}) {
   const root = await temporaryDirectory('test-research-');
-  const config = { ...await loadConfig(), stateRoot: root };
+  const config = { ...await loadConfig(), ...overrides, stateRoot: root };
   let tree = new ResearchTree(config, clock);
   await tree.initialize();
-  t.after(async () => { tree.close(); await rm(root, { recursive: true, force: true }); });
+  t.after(async () => { await tree.close(); await rm(root, { recursive: true, force: true }); });
   let sequence = 0;
   const id = () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`;
   return {
     root, config, id, get tree() { return tree; },
-    async reopen() { tree.close(); tree = new ResearchTree(config, clock); await tree.initialize(); },
+    async reopen() { await tree.close(); tree = new ResearchTree(config, clock); await tree.initialize(); },
     async copyTo(destination: string) {
-      tree.close();
+      await tree.close();
       try { await cp(root, destination, { recursive: true }); }
       finally { tree = new ResearchTree(config, clock); await tree.initialize(); }
     },
@@ -90,7 +91,7 @@ test('concurrent revisions admit one change and leave a replayable log', async t
   assert.deepEqual(f.tree.graph(project.id), expected);
 });
 
-test('archival and retraction retain workspaces and permit cooperative checkpoints', async t => {
+test('archival and retraction retain workspaces and permit shared-history checkpoints', async t => {
   const f = await fixture(t);
   const project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Archival');
   const a = await f.node(project.id), b = await f.node(project.id);
@@ -192,7 +193,7 @@ test('checkpoint inheritance retains executable file mode', async t => {
     'a copied checkpoint must preserve the executable bit');
 });
 
-test('capture retains raw unfinished workspace contents without changing HEAD or the ordinary index', async t => {
+test('checkpoint stages all shared changes onto ordinary history and follows Git inclusion and attributes', async t => {
   const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Unfinished files');
   const node = await f.node(project.id), work = f.tree.workspace(project.id, node);
   const git = (...args: string[]) => execute('git', ['-C', work, ...args]);
@@ -211,23 +212,23 @@ test('capture retains raw unfinished workspace contents without changing HEAD or
   await writeFile(join(work, 'untracked.txt'), 'new incomplete work\r\n');
   await writeFile(join(work, 'run.sh'), '#!/bin/sh\nexit 1\n');
   await chmod(join(work, 'run.sh'), 0o755);
-  const head = (await git('rev-parse', 'HEAD')).stdout, index = await readFile(join(work, '.git', 'index'));
+  const head = (await git('rev-parse', 'HEAD')).stdout.trim();
   const checkpoint = await f.tree.checkpoint(project.id, node, f.id(), {publisher:owner,note:'Work in progress'});
-  assert.equal((await git('rev-parse', 'HEAD')).stdout, head);
-  assert.deepEqual(await readFile(join(work, '.git', 'index')), index);
-  assert.equal((await git('show', ':draft.txt')).stdout, 'staged version\n');
-  assert.deepEqual(checkpoint.files, ['.gitattributes', '.gitignore', 'draft.txt', 'ignored.dat', 'run.sh', 'untracked.txt']);
+  assert.equal((await git('rev-parse', 'HEAD')).stdout.trim(), checkpoint.commit);
+  assert.equal((await git('rev-parse', 'HEAD^')).stdout.trim(), head);
+  assert.equal((await git('show', ':draft.txt')).stdout, 'unfinished working version\nsecond line\n');
+  assert.equal((await git('diff', '--cached', '--name-only')).stdout, '');
   const captured = await execute('git', ['-C', work, 'show', `${checkpoint.commit}:draft.txt`], {encoding:'buffer'});
-  assert.deepEqual(captured.stdout, raw, 'Git line-ending conversion must not alter captured bytes');
-  assert.deepEqual((await execute('git', ['-C', work, 'show', `${checkpoint.commit}:ignored.dat`], {encoding:'buffer'})).stdout, Buffer.from([0, 13, 10, 255]));
-  assert.equal((await git('show', `${checkpoint.commit}:untracked.txt`)).stdout, 'new incomplete work\r\n');
+  assert.deepEqual(captured.stdout, Buffer.from('unfinished working version\nsecond line\n'), 'Git attributes govern retained bytes');
+  assert.equal((await git('ls-tree', checkpoint.commit, '--', 'ignored.dat')).stdout, '');
+  assert.equal((await git('show', `${checkpoint.commit}:untracked.txt`)).stdout, 'new incomplete work\n');
   assert.match((await git('ls-tree', checkpoint.commit, '--', 'run.sh')).stdout, /^100755 /);
   assert.equal((await git('ls-tree', checkpoint.commit, '--', 'removed.txt')).stdout, '');
   assert.deepEqual(await readFile(join(work, 'draft.txt')), raw);
 });
 
-test('configured Git clean filters cannot transform a checkpoint', async t => {
-  const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Raw filter capture');
+test('configured Git clean filters govern checkpoint contents', async t => {
+  const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Git filter capture');
   const node = await f.node(project.id), work = f.tree.workspace(project.id, node);
   const git = (...args: string[]) => execute('git', ['-C', work, ...args]);
   await writeFile(join(work, '.gitattributes'), '*.txt filter=uppercase\n');
@@ -237,8 +238,8 @@ test('configured Git clean filters cannot transform a checkpoint', async t => {
   const unfiltered = (await git('hash-object', '--no-filters', 'result.txt')).stdout;
   assert.notEqual(filtered, unfiltered, 'The fixture must exercise an effective clean filter');
   const checkpoint = await f.tree.checkpoint(project.id, node, f.id(), {publisher:owner});
-  assert.equal((await git('show', `${checkpoint.commit}:result.txt`)).stdout, 'raw scientific observation\n');
-  assert.equal((await git('rev-parse', `${checkpoint.commit}:result.txt`)).stdout, unfiltered);
+  assert.equal((await git('show', `${checkpoint.commit}:result.txt`)).stdout, 'RAW SCIENTIFIC OBSERVATION\n');
+  assert.equal((await git('rev-parse', `${checkpoint.commit}:result.txt`)).stdout, filtered);
 });
 
 test('checkpoint contention excludes only publishers of the same node', async t => {
@@ -251,42 +252,22 @@ test('checkpoint contention excludes only publishers of the same node', async t 
   assert.equal(f.tree.workspace(project.id, first, 'write'), f.tree.workspace(project.id, first), 'Workers can enter the workspace during capture');
   await assert.rejects(f.tree.checkpoint(project.id, first, f.id(), {publisher:owner}), fault('CHECKPOINT_BUSY'));
   const [firstSaved, secondSaved] = await Promise.all([firstCapture, secondCapture]);
-  assert.deepEqual(firstSaved.files, ['first.txt']);
-  assert.deepEqual(secondSaved.files, ['second.txt']);
+  assert.equal((await execute('git', ['-C', f.tree.workspace(project.id, first), 'show', `${firstSaved.commit}:first.txt`])).stdout, 'first unfinished group');
+  assert.equal((await execute('git', ['-C', f.tree.workspace(project.id, second), 'show', `${secondSaved.commit}:second.txt`])).stdout, 'second unfinished group');
   const next = await f.tree.checkpoint(project.id, first, f.id(), {publisher:owner});
   assert.notEqual(next.id, firstSaved.id, 'Later publications have independent identities');
 });
 
-test('a crashed capture private index lock cannot obstruct a fresh attempt for the same request', async t => {
-  const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Interrupted capture');
-  const node = await f.node(project.id), work = f.tree.workspace(project.id, node), request = f.id();
-  await writeFile(join(work, 'data.txt'), 'surviving unfinished work');
-  // Reproduce abandoned Git scratch storage after process loss, before any
-  // candidate became durable. A retry must own fresh scratch, not steal its lock.
-  const abandoned = await mkdtemp(join(project.root, '.polariton', `index-${request}-`));
-  const index = join(abandoned, 'index'), lock = index + '.lock';
-  await execute('git', ['-C', work, 'read-tree', '--empty'], {env:{...process.env,GIT_INDEX_FILE:index}});
-  const original = await readFile(index);
-  await writeFile(lock, 'interrupted Git index writer');
-  const checkpoint = await f.tree.checkpoint(project.id, node, request, {publisher:owner});
-  assert.deepEqual(checkpoint.files, ['data.txt']);
-  assert.deepEqual(await readFile(index), original);
-  assert.equal(await readFile(lock, 'utf8'), 'interrupted Git index writer');
-  assert.deepEqual((await readdir(join(project.root, '.polariton'))).filter(name => name.startsWith(`index-${request}-`)), [basename(abandoned)]);
-  await f.reopen();
-  assert.deepEqual((await readdir(join(project.root, '.polariton'))).filter(name => name.startsWith(`index-${request}-`)), []);
-  assert.deepEqual(f.tree.checkpoints(project.id, node), [checkpoint], 'Ownership recovery removes only disposable capture scratch');
-});
-
-test('closing the owner cancels an unselected capture without publishing or blocking restart', async t => {
+test('closing the owner cancels an unselected publication without publishing or blocking restart', async t => {
   const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Capture cancellation');
   const node = await f.node(project.id);
   const pending = f.tree.checkpoint(project.id,node,f.id(),{publisher:owner});
-  const rejected = assert.rejects(pending,fault('CAPTURE_CANCELLED'));
+  const rejected = assert.rejects(pending,fault('CHECKPOINT_CANCELLED'));
   await f.reopen();
   await rejected;
   assert.deepEqual(f.tree.checkpoints(project.id,node),[]);
-  assert.deepEqual((await f.tree.checkpoint(project.id,node,f.id(),{publisher:owner})).files,[]);
+  const saved = await f.tree.checkpoint(project.id,node,f.id(),{publisher:owner});
+  assert.equal((await execute('git', ['-C', f.tree.workspace(project.id,node), 'rev-parse', 'HEAD'])).stdout.trim(), saved.commit);
 });
 
 test('ambient Git routing cannot redirect node creation, checkpoint publication or inherited reads', async t => {
@@ -314,15 +295,15 @@ test('ambient Git routing cannot redirect node creation, checkpoint publication 
   assert.equal((await execute('git', ['-C', foreign, 'status', '--porcelain'])).stdout, '');
 });
 
-test('an incompatible version-2 research registry is rejected without changing retained bytes', async t => {
-  const root = await temporaryDirectory('test-research-v2-');
+test('an incompatible version-4 research registry is rejected without changing retained bytes', async t => {
+  const root = await temporaryDirectory('test-research-v4-');
   t.after(() => rm(root, {recursive:true,force:true}));
   const database = join(root, 'research.sqlite'), previous = new DatabaseSync(database);
-  previous.exec("CREATE TABLE retained_evidence(value TEXT); INSERT INTO retained_evidence VALUES ('Do not migrate or erase'); PRAGMA user_version=2;");
+  previous.exec("CREATE TABLE retained_evidence(value TEXT); INSERT INTO retained_evidence VALUES ('Do not migrate or erase'); PRAGMA user_version=4;");
   previous.close();
   const original = await readFile(database), tree = new ResearchTree({...await loadConfig(),stateRoot:root});
   try { await assert.rejects(tree.initialize(), fault('STORAGE_VERSION')); }
-  finally { tree.close(); }
+  finally { await tree.close(); }
   assert.deepEqual(await readFile(database), original);
 });
 
@@ -341,7 +322,8 @@ test('project and file boundaries reject identity substitution, Git internals an
   await assert.rejects(f.tree.file(first.id, a, join(secondRoot, 'private.txt')), fault('FILE_DENIED'));
   await symlink(join(secondRoot, 'private.txt'), join(firstRoot, 'escape.txt'));
   await assert.rejects(f.tree.file(first.id, a, 'escape.txt'), fault('FILE_DENIED'));
-  await assert.rejects(f.tree.checkpoint(first.id, a, f.id(), {publisher:owner}), fault('UNSUPPORTED_FILE'));
+  const saved = await f.tree.checkpoint(first.id, a, f.id(), {publisher:owner});
+  assert.equal((await execute('git', ['-C', firstRoot, 'show', `${saved.commit}:escape.txt`])).stdout, join(secondRoot, 'private.txt'), 'Git retains the symlink itself, never its target contents');
   await assert.rejects(f.tree.checkpoint(first.id, a, '../../outside', {publisher:owner}));
 });
 
@@ -349,7 +331,7 @@ test('one state directory has one owner and ownership is released on close', asy
   const f = await fixture(t);
   const other = new ResearchTree(f.config);
   try { await assert.rejects(other.initialize(), fault('STATE_OWNED')); }
-  finally { other.close(); }
+  finally { await other.close(); }
   const project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Single owner');
   await f.node(project.id);
   const expected = f.tree.graph(project.id);
@@ -374,13 +356,14 @@ test('an interrupted repository initialization completes before the node is publ
   assert.equal((await f.tree.file(project.id, next, 'retained.txt')).toString(), 'user work survives recovery');
 });
 
-test('inherited ignored files are retained in the independent initial Git checkpoint', async t => {
+test('inherited tracked files matching ignore rules are retained in the independent initial Git checkpoint', async t => {
   const f = await fixture(t);
   const project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Ignored data inheritance');
   const a = await f.node(project.id);
   const source = f.tree.workspace(project.id, a);
   await writeFile(join(source, '.gitignore'), '*.dat\n');
   await writeFile(join(source, 'measured.dat'), 'selected scientific data');
+  await execute('git', ['-C', source, 'add', '-f', 'measured.dat']);
   const checkpoint = await f.tree.checkpoint(project.id, a, f.id(), {publisher:owner});
   const b = await f.node(project.id, 'Inherited', { nodeId: a, checkpointId: checkpoint.id });
   const restored = await execute('git', ['-C', f.tree.workspace(project.id, b), 'show', 'HEAD:measured.dat']);
@@ -401,23 +384,33 @@ test('checkpoint publication recovers the exact candidate and publisher metadata
   await writeFile(lock, 'a concurrent Git operation owns this ref');
   const publisher = {kind:'worker' as const,id:f.id(),processId:f.id()};
   const publication = {publisher,note:'Unfinished analysis; tests not yet run'};
+  const resumed = {...publication,publisher:{...publisher,processId:f.id()}};
   await assert.rejects(f.tree.checkpoint(project.id, a, checkpointId, publication));
   assert.deepEqual(f.tree.checkpoints(project.id, a), []);
   await assert.rejects(f.tree.checkpoint(project.id, a, checkpointId, {...publication,note:'Changed note'}), fault('OPERATION_CONFLICT'));
   await assert.rejects(f.tree.checkpoint(project.id, a, checkpointId, {...publication,publisher:owner}), fault('OPERATION_CONFLICT'));
-  await rm(lock);
-  await writeFile(join(work, 'data.txt'), 'later working-file edit');
+  await assert.rejects(f.tree.checkpoint(project.id, a, checkpointId, {...publication,publisher:{...publisher,id:f.id()}}), fault('OPERATION_CONFLICT'));
   await f.reopen();
-  const saved = await f.tree.checkpoint(project.id, a, checkpointId, publication);
+  assert.deepEqual(f.tree.checkpoints(project.id, a), [], 'the Git reference lock keeps publication pending across restart');
+  await rm(lock);
+  const candidate = (await execute('git', ['-C', work, 'rev-parse', 'HEAD'])).stdout.trim();
+  await writeFile(join(work, 'data.txt'), 'later working-file edit');
+  await execute('git', ['-C', work, 'add', '-A']);
+  await execute('git', ['-C', work, '-c', 'user.name=Researcher', '-c', 'user.email=researcher@localhost', 'commit', '--quiet', '-m', 'Later manual work']);
+  const later = (await execute('git', ['-C', work, 'rev-parse', 'HEAD'])).stdout.trim();
+  const saved = await f.tree.checkpoint(project.id, a, checkpointId, resumed);
   assert.equal(saved.id, checkpointId);
-  assert.deepEqual(saved.publisher, publisher);
+  assert.equal(saved.commit, candidate);
+  assert.equal((await execute('git', ['-C', work, 'rev-parse', 'HEAD'])).stdout.trim(), later, 'recovering a milestone does not rewrite newer ordinary history');
+  assert.deepEqual(saved.publisher, publisher, 'a restarted worker keeps its original publication attribution');
   assert.equal(saved.note, publication.note);
-  assert.equal(saved.createdAt, 102);
-  assert.deepEqual(saved.capture, {startedAt:100,finishedAt:101,policy:'regular-files-v1',consistency:'cooperative-verified',attempts:1});
-  assert.equal(clock, 103, 'Recovery must not recapture files or replace the original interval');
+  assert.equal(typeof saved.createdAt, 'number');
+  assert.equal('capture' in saved, false);
+  assert.equal('files' in saved, false);
   assert.equal((await execute('git', ['-C', work, 'show', `${saved.commit}:data.txt`])).stdout, 'checkpoint candidate');
   await f.reopen();
   assert.deepEqual(f.tree.checkpoints(project.id, a), [saved]);
+  assert.deepEqual(await f.tree.checkpoint(project.id, a, checkpointId, {...publication,publisher:{...publisher,processId:f.id()}}), saved, 'completed retries use stable worker identity and preserve the original process metadata');
 });
 
 test('relocated project copies retain graph and file history but deny changes and execution access', async t => {
@@ -441,7 +434,7 @@ test('relocated project copies retain graph and file history but deny changes an
     await assert.rejects(copy.checkpoint(project.id, node, f.id(), {publisher:owner}), fault('WORKSPACE_RELOCATED'));
     assert.deepEqual(copy.graph(project.id), graph);
     assert.equal(f.tree.workspace(project.id, node, 'write'), f.tree.workspace(project.id, node));
-    copy.close();
+    await copy.close();
     const copiedLog = join(relocated, 'projects', project.id, '.polariton/graph.jsonl');
     await appendFile(copiedLog, '{torn historical suffix');
     const damaged = await readFile(copiedLog);
@@ -450,5 +443,271 @@ test('relocated project copies retain graph and file history but deny changes an
     assert.match(copy.graph(project.id).recovery!, /^Incomplete/);
     await assert.rejects(copy.repair(project.id), fault('WORKSPACE_RELOCATED'));
     assert.deepEqual(await readFile(copiedLog), damaged, 'historical-only inspection cannot repair source bytes');
-  } finally { copy.close(); await rm(relocated, { recursive: true, force: true }); }
+  } finally { await copy.close(); await rm(relocated, { recursive: true, force: true }); }
 });
+
+test('manual commits and worker milestones share history; unchanged publications retain HEAD without empty commits', async t => {
+  const f = await fixture(t, () => 1234), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Shared Git history');
+  const node = await f.node(project.id), work = f.tree.workspace(project.id, node);
+  const git = (...args: string[]) => execute('git', ['-C', work, ...args]);
+  await writeFile(join(work, 'plot.png'), Buffer.from([137,80,78,71,0,255]));
+  const worker = {kind:'worker' as const,id:f.id(),processId:f.id()};
+  const first = await f.tree.checkpoint(project.id, node, f.id(), {publisher:worker,note:'First result'});
+  const blob = (await git('rev-parse', `${first.commit}:plot.png`)).stdout;
+  const unchanged = await f.tree.checkpoint(project.id, node, f.id(), {publisher:owner,note:'Reviewed result'});
+  assert.notEqual(unchanged.id, first.id);
+  assert.equal(unchanged.commit, first.commit);
+  assert.deepEqual(unchanged.publisher, owner);
+  assert.deepEqual(first.publisher, worker);
+  assert.equal((await git('rev-list', '--count', 'HEAD')).stdout.trim(), '2');
+  await writeFile(join(work, 'analysis.py'), 'print("corrected units")\n');
+  await git('add', '-A');
+  await git('-c','user.name=Researcher','-c','user.email=researcher@localhost','commit','--quiet','-m','Manual correction');
+  const manual = (await git('rev-parse', 'HEAD')).stdout.trim();
+  assert.equal(f.tree.checkpoints(project.id,node).length, 2, 'manual Git commits do not create Polariton records');
+  const registered = await f.tree.checkpoint(project.id,node,f.id(),{publisher:owner});
+  assert.equal(registered.commit, manual);
+  assert.equal((await git('rev-parse', `${manual}^`)).stdout.trim(), first.commit);
+  assert.equal((await git('rev-parse', `${manual}:plot.png`)).stdout, blob, 'unchanged binary bytes reuse their Git object');
+  await writeFile(join(work, 'analysis.py'), 'print("second result")\n');
+  const next = await f.tree.checkpoint(project.id,node,f.id(),{publisher:worker});
+  assert.equal((await git('rev-parse', `${next.commit}^`)).stdout.trim(), manual);
+  await git('reset', '--hard', first.commit);
+  await git('reflog', 'expire', '--expire=now', '--all');
+  await git('gc', '--prune=now');
+  assert.equal((await git('rev-parse', `refs/polariton/checkpoints/${next.id}`)).stdout.trim(), next.commit);
+  assert.equal((await git('show', `${next.commit}:analysis.py`)).stdout, 'print("second result")\n');
+  assert.deepEqual(await f.tree.checkpoint(project.id,node,next.id,{publisher:worker}), next, 'a retry keeps its original commit after branch changes');
+});
+
+test('checkpoint and inheritance do not inherit upload size and workspace admission limits', async t => {
+  const f = await fixture(t, () => 100, {maxFileBytes:8,maxWorkspaceBytes:16,maxWorkspaceFiles:1});
+  const project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Independent checkpoint resources');
+  const node = await f.node(project.id), work = f.tree.workspace(project.id,node);
+  const large = Buffer.alloc(1024 * 1024, 173);
+  await writeFile(join(work,'result.bin'),large);
+  await writeFile(join(work,'analysis.py'),'print("research")\n');
+  const first = await f.tree.checkpoint(project.id,node,f.id(),{publisher:owner});
+  const second = await f.tree.checkpoint(project.id,node,f.id(),{publisher:owner});
+  assert.equal(second.commit,first.commit);
+  const child = await f.node(project.id,'Inherited large result',{nodeId:node,checkpointId:first.id});
+  assert.deepEqual(await readFile(join(f.tree.workspace(project.id,child),'result.bin')),large);
+  assert.equal(await readFile(join(f.tree.workspace(project.id,child),'analysis.py'),'utf8'),'print("research")\n');
+});
+
+test('configured commit hooks run and a rejected hook preserves staging without publishing a checkpoint', async t => {
+  const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Git repository policy');
+  const node = await f.node(project.id), work = f.tree.workspace(project.id,node), request = f.id();
+  const git = (...args: string[]) => execute('git', ['-C',work,...args]);
+  const initial = (await git('rev-parse','HEAD')).stdout;
+  const hook = join(work,'.git','hooks','pre-commit');
+  await writeFile(hook,'#!/bin/sh\necho "Research checks failed" >&2\nexit 1\n'); await chmod(hook,0o755);
+  await writeFile(join(work,'data.txt'),'unfinished result');
+  await assert.rejects(f.tree.checkpoint(project.id,node,request,{publisher:owner}), error => {
+    assert.ok(fault('CHECKPOINT_GIT')(error)); assert.match((error as Error).message,/Research checks failed/); return true;
+  });
+  assert.equal((await git('rev-parse','HEAD')).stdout,initial);
+  assert.equal((await git('show',':data.txt')).stdout,'unfinished result', 'failure must not reset the shared staging area');
+  assert.deepEqual(f.tree.checkpoints(project.id,node),[]);
+  await writeFile(hook,'#!/bin/sh\necho checked > .git/research-hook-ran\n');
+  const saved = await f.tree.checkpoint(project.id,node,request,{publisher:owner});
+  assert.equal(await readFile(join(work,'.git','research-hook-ran'),'utf8'),'checked\n');
+  assert.equal((await git('rev-parse','HEAD')).stdout.trim(),saved.commit);
+});
+
+for (const state of ['detached','merge','rebase','cherry-pick','revert','unborn'] as const) {
+  test(`checkpoint refuses ${state} Git state without staging or repairing the repository`, async t => {
+    const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Unsupported Git state');
+    const node = await f.node(project.id), work = f.tree.workspace(project.id,node);
+    const git = (...args: string[]) => execute('git',['-C',work,...args]);
+    const head = (await git('rev-parse','HEAD')).stdout.trim();
+    if(state==='detached') await git('checkout','--detach','--quiet');
+    else if(state==='unborn') await git('symbolic-ref','HEAD','refs/heads/unborn');
+    else if(state==='rebase') await mkdir(join(work,'.git','rebase-merge'));
+    else await writeFile(join(work,'.git',state==='merge'?'MERGE_HEAD':state==='cherry-pick'?'CHERRY_PICK_HEAD':'REVERT_HEAD'),head+'\n');
+    await writeFile(join(work,'draft.txt'),'uncommitted research');
+    await assert.rejects(f.tree.checkpoint(project.id,node,f.id(),{publisher:owner}),fault('CHECKPOINT_STATE'));
+    assert.equal((await git('ls-files','--','draft.txt')).stdout,'');
+    assert.equal(await readFile(join(work,'draft.txt'),'utf8'),'uncommitted research');
+    assert.deepEqual(f.tree.checkpoints(project.id,node),[]);
+  });
+}
+
+/** Expire the platform deadline only after the real Git hook reaches its barrier.
+ * Filesystem/process startup remains unconstrained by the simulated clock; failure
+ * to reach the hook is independently bounded and reported as a fixture failure. */
+async function expireAtHook(t: TestContext, workspace: string, publish: () => Promise<unknown>) {
+  const deadline = new AbortController(), observation = new AbortController();
+  const startup = AbortSignal.timeout(testDeadline(10000));
+  const marker = (async () => {
+    while (!observation.signal.aborted) {
+      if (startup.aborted) throw new Error('Git hook did not reach its startup barrier within the test budget');
+      try { await stat(join(workspace,'.git','blocked-hook')); return; }
+      catch (error) { if (!fault('ENOENT')(error)) throw error; }
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    throw new Error('Hook observation ended before startup');
+  })();
+  const timeout = t.mock.method(AbortSignal,'timeout', () => deadline.signal);
+  let publication: Promise<unknown> | undefined;
+  try {
+    publication = publish();
+    await Promise.race([marker, publication.then(() => { throw new Error('Publication completed before the blocked hook deadline'); })]);
+    deadline.abort(new DOMException('Injected checkpoint deadline','TimeoutError'));
+    await assert.rejects(publication,fault('CHECKPOINT_TIMEOUT'));
+  } finally {
+    timeout.mock.restore();
+    deadline.abort(); observation.abort();
+    await Promise.allSettled([marker, ...(publication ? [publication] : [])]);
+  }
+}
+
+test('a timed out commit hook leaves no running mutation and the same publication can retry', {timeout:testDeadline(15000)}, async t => {
+  const f = await fixture(t, () => 100, {checkpointKillGraceMs:testDeadline(100)});
+  const project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Checkpoint timeout');
+  const node = await f.node(project.id), work = f.tree.workspace(project.id,node), request = f.id();
+  const hook = join(work,'.git','hooks','pre-commit');
+  await writeFile(hook,'#!/bin/sh\necho "hook reached" > .git/blocked-hook.pending\nmv .git/blocked-hook.pending .git/blocked-hook\nwhile :; do sleep 60; done\n'); await chmod(hook,0o755);
+  await writeFile(join(work,'data.txt'),'retained after retry');
+  await expireAtHook(t,work,() => f.tree.checkpoint(project.id,node,request,{publisher:owner}));
+  assert.equal(await readFile(join(work,'.git','blocked-hook'),'utf8'),'hook reached\n');
+  assert.deepEqual(f.tree.checkpoints(project.id,node),[]);
+  await rm(hook);
+  const saved = await f.tree.checkpoint(project.id,node,request,{publisher:owner});
+  assert.equal((await execute('git',['-C',work,'show',`${saved.commit}:data.txt`])).stdout,'retained after retry');
+  assert.equal((await execute('git',['-C',work,'rev-list','--count','HEAD'])).stdout.trim(),'2');
+});
+
+test('a commit completed before hook timeout is recovered exactly after restart and later manual work', {timeout:testDeadline(15000)}, async t => {
+  const f = await fixture(t, () => 100, {checkpointKillGraceMs:testDeadline(100)});
+  const project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Uncertain commit recovery');
+  const node = await f.node(project.id), work = f.tree.workspace(project.id,node), request = f.id();
+  const git = (...args: string[]) => execute('git',['-C',work,...args]);
+  const hook = join(work,'.git','hooks','post-commit');
+  await writeFile(hook,'#!/bin/sh\necho "committed" > .git/blocked-hook.pending\nmv .git/blocked-hook.pending .git/blocked-hook\nwhile :; do sleep 60; done\n'); await chmod(hook,0o755);
+  await writeFile(join(work,'data.txt'),'exact publication candidate');
+  await expireAtHook(t,work,() => f.tree.checkpoint(project.id,node,request,{publisher:owner}));
+  assert.equal(await readFile(join(work,'.git','blocked-hook'),'utf8'),'committed\n');
+  const candidate = (await git('rev-parse','HEAD')).stdout.trim();
+  await rm(hook);
+  await writeFile(join(work,'data.txt'),'later manual revision');
+  await git('add','-A');
+  await git('-c','user.name=Researcher','-c','user.email=researcher@localhost','commit','--quiet','-m','Later manual commit');
+  const later = (await git('rev-parse','HEAD')).stdout.trim();
+  await f.reopen();
+  const saved = await f.tree.checkpoint(project.id,node,request,{publisher:owner});
+  assert.equal(saved.commit,candidate);
+  assert.equal((await git('show',`${saved.commit}:data.txt`)).stdout,'exact publication candidate');
+  assert.equal((await git('rev-parse','HEAD')).stdout.trim(),later);
+  assert.equal((await git('rev-list','--count','HEAD')).stdout.trim(),'3', 'recovery creates no duplicate commit');
+  assert.deepEqual(await f.tree.checkpoint(project.id,node,request,{publisher:owner}),saved);
+});
+
+test('a hook that removes publication identity produces an explicit recovery conflict', async t => {
+  const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Altered recovery marker');
+  const node = await f.node(project.id), work = f.tree.workspace(project.id,node), request = f.id();
+  const git = (...args: string[]) => execute('git',['-C',work,...args]);
+  const hook = join(work,'.git','hooks','commit-msg');
+  await writeFile(hook,'#!/bin/sh\nprintf "Rewritten message without publication identity\\n" > "$1"\n'); await chmod(hook,0o755);
+  await writeFile(join(work,'data.txt'),'committed despite altered marker');
+  await assert.rejects(f.tree.checkpoint(project.id,node,request,{publisher:owner}),fault('CHECKPOINT_RECOVERY_CONFLICT'));
+  assert.equal((await git('rev-list','--count','HEAD')).stdout.trim(),'2', 'the commit is retained as actual shared Git state');
+  assert.deepEqual(f.tree.checkpoints(project.id,node),[]);
+  await rm(hook);
+  await f.reopen();
+  await assert.rejects(f.tree.checkpoint(project.id,node,request,{publisher:owner}),fault('CHECKPOINT_RECOVERY_CONFLICT'));
+  assert.equal((await git('rev-list','--count','HEAD')).stdout.trim(),'2', 'ambiguous recovery must not create a duplicate commit');
+  await git('reset','--hard','HEAD^');
+  await git('reflog','expire','--expire=now','--all');
+  await git('gc','--prune=now');
+  await f.reopen();
+  await assert.rejects(f.tree.checkpoint(project.id,node,request,{publisher:owner}),fault('CHECKPOINT_RECOVERY_CONFLICT'));
+  assert.equal((await git('rev-list','--count','HEAD')).stdout.trim(),'1', 'erasing commit evidence does not authorize repeating an uncertain commit');
+});
+
+test('a selected checkpoint awaiting its final reference survives branch rewrite and Git cleanup', async t => {
+  const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Pending candidate retention');
+  const node = await f.node(project.id), work = f.tree.workspace(project.id,node), request = f.id();
+  const git = (...args: string[]) => execute('git',['-C',work,...args]);
+  const initial = (await git('rev-parse','HEAD')).stdout.trim();
+  await writeFile(join(work,'data.txt'),'candidate must survive cleanup');
+  const lock = join(work,'.git','refs','polariton','checkpoints',request+'.lock');
+  await mkdir(dirname(lock),{recursive:true}); await writeFile(lock,'locked final reference');
+  await assert.rejects(f.tree.checkpoint(project.id,node,request,{publisher:owner}));
+  const candidate = (await git('rev-parse','HEAD')).stdout.trim();
+  await git('reset','--hard',initial);
+  await git('reflog','expire','--expire=now','--all');
+  await git('gc','--prune=now');
+  await rm(lock);
+  await f.reopen();
+  const saved = await f.tree.checkpoint(project.id,node,request,{publisher:owner});
+  assert.equal(saved.commit,candidate);
+  assert.equal((await git('show',`${saved.commit}:data.txt`)).stdout,'candidate must survive cleanup');
+  assert.equal((await git('rev-parse','HEAD')).stdout.trim(),initial);
+});
+
+test('successful publication terminates background hook children before releasing its workspace', async t => {
+  const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Hook child ownership');
+  const node = await f.node(project.id), work = f.tree.workspace(project.id,node);
+  const hook = join(work,'.git','hooks','post-commit');
+  await writeFile(hook, '#!/bin/sh\n(while [ ! -f .git/release-background ]; do sleep 0.01; done; echo escaped > .git/background-write) >/dev/null 2>&1 &\n');
+  await chmod(hook,0o755); await writeFile(join(work,'data.txt'),'shared progress');
+  await f.tree.checkpoint(project.id,node,f.id(),{publisher:owner});
+  await writeFile(join(work,'.git','release-background'),'publication returned');
+  await new Promise(resolve => setTimeout(resolve,testDeadline(200)));
+  await assert.rejects(readFile(join(work,'.git','background-write')),fault('ENOENT'));
+});
+
+for (const changed of [false, true]) {
+  test(`a process crash after retaining a ${changed ? 'changed' : 'no-change'} candidate recovers the exact checkpoint before newer manual work`, {timeout:testDeadline(15000)}, async t => {
+    const f = await fixture(t), project = await f.tree.createProject(globalThis.crypto.randomUUID(), 'Publication process crash');
+    const node = await f.node(project.id), work = f.tree.workspace(project.id,node), request = f.id();
+    const git = (...args: string[]) => execute('git',['-C',work,...args]);
+    await writeFile(join(work,'data.txt'),'original retained evidence');
+    const baseline = await f.tree.checkpoint(project.id,node,f.id(),{publisher:owner});
+    if (changed) await writeFile(join(work,'data.txt'),'new publication candidate');
+    const hook = join(work,'.git','hooks','reference-transaction');
+    await writeFile(hook, `#!/bin/sh
+[ "$1" = committed ] || exit 0
+while read old new ref; do
+  if [ "$ref" = "refs/polariton/publications/${request}" ]; then
+    kill -KILL "$POLARITON_TEST_PUBLICATION_PID"
+  fi
+done
+`);
+    await chmod(hook,0o755);
+    await f.tree.close();
+    // A real Git hook interrupts the publication process after reference durability
+    // and before its command returns. No test edits the publication journal.
+    const program = `
+import {ResearchTree} from ${JSON.stringify(new URL('../src/research.ts',import.meta.url).href)};
+import {loadConfig} from ${JSON.stringify(new URL('../src/config.ts',import.meta.url).href)};
+process.env.POLARITON_TEST_PUBLICATION_PID=String(process.pid);
+const tree=new ResearchTree({...await loadConfig(),stateRoot:process.env.POLARITON_TEST_STATE});
+await tree.initialize();
+try { await tree.checkpoint(${JSON.stringify(project.id)},${JSON.stringify(node)},${JSON.stringify(request)},{publisher:{kind:'owner',id:'local-owner'},note:'Crash interval'}); }
+finally { await tree.close(); }
+`;
+    await assert.rejects(execute(process.execPath,['--input-type=module','-e',program],{
+      env:{...process.env,POLARITON_TEST_STATE:f.root},timeout:testDeadline(10000),
+    }), error => error instanceof Error && 'signal' in error && error.signal === 'SIGKILL');
+    await rm(hook);
+    const candidate = (await git('rev-parse','HEAD')).stdout.trim();
+    if (!changed) assert.equal(candidate,baseline.commit);
+    else assert.notEqual(candidate,baseline.commit);
+    await writeFile(join(work,'data.txt'),'later manual revision');
+    await git('add','-A');
+    await git('-c','user.name=Researcher','-c','user.email=researcher@localhost','commit','--quiet','-m','Manual work after process loss');
+    const later = (await git('rev-parse','HEAD')).stdout.trim();
+    await writeFile(join(work,'draft.txt'),'newer uncommitted work');
+    await f.reopen();
+    const saved = f.tree.checkpoints(project.id,node).find(checkpoint => checkpoint.id===request);
+    assert.ok(saved,'startup completes the retained candidate without requiring another publication');
+    assert.equal(saved.commit,candidate);
+    assert.equal(saved.note,'Crash interval');
+    assert.equal((await git('show',`${saved.commit}:data.txt`)).stdout,changed ? 'new publication candidate' : 'original retained evidence');
+    assert.equal((await git('rev-parse','HEAD')).stdout.trim(),later);
+    assert.equal((await git('ls-files','--','draft.txt')).stdout,'','recovery never stages newer working files');
+    assert.deepEqual(await f.tree.checkpoint(project.id,node,request,{publisher:owner,note:'Crash interval'}),saved);
+  });
+}

@@ -3,6 +3,11 @@ export class ApiError extends Error {
  readonly code:string; readonly status:number;
  constructor(code:string,message:string,status:number){super(message);this.name='ApiError';this.code=code;this.status=status;}
 }
+/** A rejected owner request can be corrected under a new request identity. A lost
+ * response, timeout or unavailable owner still requires receipt recovery. */
+export function operationOutcomeUnknown(error:unknown):boolean {
+ return !(error instanceof ApiError&&error.status>=400&&error.status<500&&error.status!==408&&!/UNCERTAIN|UNAVAILABLE|TIMEOUT/.test(error.code));
+}
 /** Authenticated same-origin command/query boundary; callers receive domain errors without wire parsing. */
 export async function api<T>(path:string,body?:unknown,signal?:AbortSignal):Promise<T> {
  const response=await fetch(`/api${path}`,body===undefined?{signal}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});

@@ -4,6 +4,7 @@ import {commands} from './cli/contracts.ts';
 import Fastify from 'fastify';
 import {CallerAccess,serveApplication} from './cli/server.ts';
 import {Projects,MainOperations} from './cli/main-operations.ts';
+import {WorkspaceFolder} from './workspace-folder.ts';
 import { DirectoryPicker } from './directory-picker.ts';
 import { serveControl } from './control.ts';
 import cookie from '@fastify/cookie';
@@ -27,6 +28,9 @@ import {ProviderSettings,ProviderSettingsError} from '../harness/providers.ts';
 import {SaveProvider,RemoveProvider,DefaultProviderRoute,DiscoverProvider} from '../harness/provider-contracts.ts';
 import { EnvironmentClient, loadRackConfig } from './environment/daemon.ts';
 import { Command as EnvironmentCommand, RackFault, Key as EnvironmentKey, EnvironmentRef, BrowserInventory, BrowserResults, Provenance, Revision, Capability, ConnectionRevision, PreviewInput, ImportPreview } from './environment/contracts.ts';
+import {CapabilityInspection,Inspection,PreparationInput,PreparationResult} from './environment/preparation-contracts.ts';
+import {Operation as EnvironmentReceipt} from './operations.ts';
+import {AccountCreate,AccountReplace,AccountPublic,AccountInventory,AccountAuthorization,AccountDisconnect} from './environment/account-contracts.ts';
 import { VerificationBudget } from '../harness/budget.mjs';
 import {CanvasBridge} from './canvas.ts';
 import {CanvasSnapshots} from './canvas-snapshots.ts';
@@ -42,12 +46,19 @@ export async function createApp(config: Config, harnessFactory?: HarnessFactory)
   const canvasSockets=new Set<{close:()=>void}>();
   app.addHook('preClose',async()=>{canvas.close();for(const socket of canvasSockets)socket.close();await snapshots?.close();});
   const workspace = new WorkspaceObserver(config,tree,diagnostic=>app.log.warn({...diagnostic,workspace:workspace.stats()}));
+  const workspaceFolder=new WorkspaceFolder({timeoutMs:config.workspaceFolderTimeoutMs,maxOutputBytes:config.maxBodyBytes});
+  app.addHook('preClose',async()=>{workspaceFolder.close();});
   const directoryPicker = new DirectoryPicker({timeoutMs:config.directoryPickerTimeoutMs,maxOutputBytes:config.maxBodyBytes});
   app.addHook('preClose', async () => { directoryPicker.close(); });
   let ownedAgents: AgentManager | undefined;
   let providers: ProviderSettings | undefined;
   let application:Awaited<ReturnType<typeof serveApplication>>|undefined;
-  app.addHook('preClose',async()=>{await application?.close();});
+  app.addHook('preClose',async()=>{
+    // Stop Git before transports drain their active publication requests. Keep
+    // storage open until those requests have recorded their cancellation receipts.
+    tree.stopPublications();
+    await application?.close();
+  });
   let budget: VerificationBudget | undefined;
   let queued: NodeJS.Timeout | undefined;
   let deadline: NodeJS.Timeout | undefined;
@@ -59,7 +70,7 @@ export async function createApp(config: Config, harnessFactory?: HarnessFactory)
     if (queued) clearTimeout(queued);
     for (const socket of sockets) socket.close();
     try { await ownedAgents?.close(); }
-    finally { try { await providers?.close(); } finally { try { tree.close(); } finally { budget?.close(); } } }
+    finally { try { await providers?.close(); } finally { try { await tree.close(); } finally { budget?.close(); } } }
   });
   try {
   tree.on('recovery', value => app.log.warn(value)); await tree.initialize();
@@ -166,7 +177,19 @@ export async function createApp(config: Config, harnessFactory?: HarnessFactory)
   };
   app.get('/api/environment/inventory',()=>rackCall('/v1/inventory',BrowserInventory));
   app.post('/api/environment/capabilities/preview',request=>rackCall('/v1/capabilities/preview',ImportPreview,PreviewInput.parse(request.body)));
+  app.post('/api/environment/preparation/preview',request=>rackCall('/v1/cli',PreparationResult,{request:{version:1,command:{kind:'environment.prepare',input:PreparationInput.parse({...z.record(z.string(),z.unknown()).parse(request.body),preview:true})}},actor:owner}));
+  app.get('/api/environment/inspect/:id',request=>{const p=z.object({id:EnvironmentKey}).parse(request.params),query=z.object({revision:EnvironmentKey.optional()}).strict().parse(request.query);return rackCall('/v1/cli',Inspection,{request:{version:1,command:{kind:'environment.inspect',input:{target:p.id,...query}}},actor:owner});});
+  app.get('/api/environment/operations/:id',request=>{const p=z.object({id:EnvironmentKey}).parse(request.params);return rackCall('/v1/cli',EnvironmentReceipt,{request:{version:1,command:{kind:'operation.get',input:{target:`environment:${p.id}`}}},actor:owner});});
+  // Browser owner authority is deliberate here: worker application credentials have
+  // no route to private account creation, login, replacement or disconnect.
+  app.get('/api/environment/accounts',()=>rackCall('/v1/accounts',AccountInventory));
+  app.post('/api/environment/accounts',request=>rackCall('/v1/accounts',AccountPublic,AccountCreate.parse(request.body)));
+  app.get('/api/environment/accounts/:id',request=>{const p=z.object({id:EnvironmentKey}).parse(request.params);return rackCall(`/v1/accounts/${p.id}`,AccountPublic);});
+  app.post('/api/environment/accounts/:id/connect',request=>{const p=z.object({id:EnvironmentKey}).parse(request.params);z.object({}).strict().parse(request.body);return rackCall(`/v1/accounts/${p.id}/connect`,AccountAuthorization,{});});
+  app.post('/api/environment/accounts/:id/replace',request=>{const p=z.object({id:EnvironmentKey}).parse(request.params);return rackCall(`/v1/accounts/${p.id}/replace`,AccountPublic,AccountReplace.parse(request.body));});
+  app.post('/api/environment/accounts/:id/disconnect',request=>{const p=z.object({id:EnvironmentKey}).parse(request.params);z.object({}).strict().parse(request.body);return rackCall(`/v1/accounts/${p.id}/disconnect`,AccountDisconnect,{});});
   app.get('/api/environment/capabilities/:id',request=>{const p=z.object({id:EnvironmentKey}).parse(request.params);return rackCall(`/v1/capabilities/${p.id}`,Capability);});
+  app.get('/api/environment/capabilities/:id/inspection',request=>{const p=z.object({id:EnvironmentKey}).parse(request.params),query=z.object({revision:EnvironmentKey.optional()}).strict().parse(request.query);return rackCall(`/v1/capabilities/${p.id}/inspection${query.revision?`?revision=${query.revision}`:''}`,CapabilityInspection);});
   app.get('/api/environment/capabilities/:id/revisions/:revision',request=>{const p=z.object({id:EnvironmentKey,revision:EnvironmentKey}).parse(request.params);return rackCall(`/v1/capabilities/${p.id}/revisions/${p.revision}`,ConnectionRevision);});
   app.get('/api/environment/releases/:release/provenance',request=>{const p=z.object({release:EnvironmentKey}).parse(request.params);return rackCall(`/v1/releases/${p.release}/provenance`,Provenance);});
   app.get('/api/environment/revisions/:environment/:revision',async(request,reply)=>{const p=z.object({environment:EnvironmentKey,revision:EnvironmentKey}).parse(request.params);const revision=await rackCall(`/v1/revisions/${p.environment}/${p.revision}`,Revision);return reply.header('Content-Disposition',`attachment; filename="${p.environment}-${p.revision}.json"`).type('application/json').send(revision);});
@@ -193,6 +216,16 @@ export async function createApp(config: Config, harnessFactory?: HarnessFactory)
   app.get(`${base}/graph`, request => tree.graph(project(request.params)));
   app.post(`${base}/graph`, request => tree.mutate(project(request.params), Mutation.parse(request.body)));
   app.post(`${base}/repair`, request => tree.repair(project(request.params)));
+  app.post(`${base}/nodes/:node/open-folder`,async(request,reply)=>{
+    z.object({}).strict().parse(request.body);
+    const p=node(request.params),path=tree.workspace(p.project,p.node);
+    const controller=new AbortController();
+    const cancel=()=>controller.abort(new Fault('FOLDER_CANCELLED','Opening the workspace folder was cancelled',408));
+    reply.raw.once('close',cancel);
+    try{await workspaceFolder.open(path,controller.signal);return {opened:true};}
+    catch(error){request.log.warn({err:error,project:p.project,node:p.node},'Workspace folder launch failed');throw error;}
+    finally{reply.raw.off('close',cancel);}
+  });
   app.get(`${base}/nodes/:node/files`, request => { const p = node(request.params),q=z.object({path:z.string().default('')}).parse(request.query); return tree.directory(p.project, p.node,q.path); });
   app.get(`${base}/nodes/:node/file`, async request => {
     const p=node(request.params),q=z.object({path:z.string().min(1),offset:z.coerce.number().int().nonnegative().default(0),version:z.string().optional(),length:z.coerce.number().int().positive().max(config.maxFileBytes).optional()}).parse(request.query);

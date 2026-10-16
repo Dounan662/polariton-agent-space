@@ -16,12 +16,20 @@ export async function environmentOperation(rack:EnvironmentRack,request:Request,
   case 'capability.register':command={kind:c.kind,operationId:id,repository:c.input.repository};break;
   case 'capability.import':command={kind:c.kind,operationId:id,entries:c.input.entries};break;
   case 'capability.revise':command={kind:c.kind,operationId:id,id:c.input.target,expectedBase:c.input.expectRevision,entry:c.input.entry};break;
+  case 'capability.add':command={kind:c.kind,operationId:id,input:c.input};break;
+  case 'capability.complete':command={kind:c.kind,operationId:id,input:c.input};break;
+  case 'capability.authenticate':command={kind:c.kind,operationId:id,id:c.input.target,expectedBase:c.input.expectRevision,authentication:c.input.authentication};break;
   case 'release.install':command={kind:c.kind,operationId:id,packageId:c.input.target,commit:c.input.commit};break;
   case 'environment.publish':{
    command={kind:c.kind,operationId:id??'preview',document:c.input.document,expectedBase:c.input.expectRevision};
    if(c.input.preview)return rack.publicationPreview(command);break;
   }
   case 'environment.apply':command={kind:c.kind,operationId:id,environmentId:c.input.target,revisionId:c.input.revision};break;
+  case 'environment.prepare':if(c.input.preview)return rack.preparationPreview(c.input);command={kind:c.kind,operationId:id,input:c.input};break;
+  case 'environment.inspect':return rack.inspect(c.input.target,c.input.revision);
+  case 'environment.validate':command={kind:c.kind,operationId:id,input:c.input};break;
+  case 'operation.continue':command={kind:c.kind,operationId:id,input:c.input};break;
+  case 'operation.cancel':command={kind:c.kind,operationId:id,input:c.input};break;
   case 'environment.remove':command={kind:c.kind,operationId:id,environmentId:c.input.target,expectedBase:c.input.expectRevision};break;
   case 'mount.create':command={kind:c.kind,operationId:id,id:`m-${id}`,component:c.input.component};break;
   case 'mount.stop':command={kind:c.kind,operationId:id,id:c.input.target,force:c.input.force};break;

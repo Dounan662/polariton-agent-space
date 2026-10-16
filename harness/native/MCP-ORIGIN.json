@@ -1,0 +1,17 @@
+{
+  "package": "@deepseek-ai/dsh-mcp-client",
+  "version": "0.2.0-rc.2",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "source": "lib/index.js",
+  "upstreamSha256": "758d8fc473b700b5d351158d06ce9f9e92c16e8b25497b08bb7bd2122a87f5dd",
+  "local": "harness/native/mcp-client.mjs",
+  "changes": [
+    "Read scoped live bearer credentials before each HTTP request without auth replay",
+    "Replace fixed close observation timeout with required typed cleanup budget",
+    "Retain incomplete connection settlement and expose guardian drain barrier",
+    "Reuse the upstream public MCP tool definition and execution helper rather than copying a second invocation engine",
+    "Honor an explicit SDK legacy handshake for prepared single-session stdin streams; ordinary launches retain auto negotiation",
+    "Reject HTTP redirects so selected resource credentials and potentially executed tool calls cannot move to another endpoint"
+  ],
+  "localSha256": "33c20d7a1a76b0916f70261959cb0624d40e3cf24f830585147b7fd36e44587a"
+}

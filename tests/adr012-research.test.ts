@@ -14,13 +14,13 @@ async function fixture(t: TestContext) {
   const id = () => `12100000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`;
   let tree = new ResearchTree(config); await tree.initialize();
   const project = await tree.createProject(id(), 'Retained research');
-  t.after(async () => { tree.close(); await rm(root, {recursive: true, force: true}); });
+  t.after(async () => { await tree.close(); await rm(root, {recursive: true, force: true}); });
   return {project: project.id, id, get tree() { return tree; },
     async change(command: Mutation['command']) {
       const mutation = {operationId: id(), revision: tree.graph(project.id).revision, command};
       await tree.mutate(project.id, mutation); return mutation;
     },
-    async reopen() { tree.close(); tree = new ResearchTree(config); await tree.initialize(); },
+    async reopen() { await tree.close(); tree = new ResearchTree(config); await tree.initialize(); },
   };
 }
 

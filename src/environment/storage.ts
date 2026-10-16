@@ -23,8 +23,8 @@ export class RackStore {
     this.lock=lock;this.db=new DatabaseSync(join(root,'operations.sqlite'));
     const version=(this.db.prepare('PRAGMA user_version').get() as {user_version:number}).user_version;
     const tables=this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-    if(version!==8&&(version!==0||tables.length)){this.db.close();closeSync(lock);throw new RackFault('STATE_FORMAT','Use a fresh environment state directory; incompatible state is retained');}
-    this.db.exec('PRAGMA synchronous=FULL; PRAGMA journal_mode=WAL; BEGIN; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(kind,id)); PRAGMA user_version=8; COMMIT;');
+    if(version!==9&&(version!==0||tables.length)){this.db.close();closeSync(lock);throw new RackFault('STATE_FORMAT','Use a fresh environment state directory; incompatible state is retained');}
+    this.db.exec('PRAGMA synchronous=FULL; PRAGMA journal_mode=WAL; BEGIN; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(kind,id)); PRAGMA user_version=9; COMMIT;');
   }
   static async open(root:string,maxRecords:number){await mkdir(root,{recursive:true,mode:0o700});const path=join(root,'owner.lock'),fd=openSync(path,'a',0o600);try{await tryLockExclusive(fd);const a=fstatSync(fd),b=statSync(path);if(a.ino!==b.ino||a.dev!==b.dev)throw new Error('Lock identity changed');}catch{closeSync(fd);throw new RackFault('STATE_OWNED','Another EnvironmentDaemon owns this state directory');}return new RackStore(root,fd,maxRecords);}
   get<T>(kind:string,id:string):T|undefined{const row=this.db.prepare('SELECT body FROM records WHERE kind=? AND id=?').get(kind,id) as {body:string}|undefined;return row?RecordSchemas[kind]!.parse(JSON.parse(row.body)) as T:undefined;}

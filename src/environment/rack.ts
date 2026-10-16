@@ -1,18 +1,28 @@
 import { mkdir, readFile, readdir, realpath, rm, stat, lstat } from 'node:fs/promises';
 import { basename, join, relative, dirname, resolve } from 'node:path';
-import { createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Ajv } from 'ajv';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { ContainerBackend, command as runCommand } from './backend.ts';
 import { RackStore, durable, readJson, digest, json } from './storage.ts';
 import { Command, EnvironmentHead, Revision, ReleaseRecord, Provenance, CapabilitySource, RackFault, type RackConfig, type Inventory, type ManagedCapability, type Release, type Mount, type Binding, type Connection, type Realization, type Observation, type Operation, type Component, type ManagedComponent, type ConnectionRevision, type Capability, PreviewInput, type ImportPreview } from './contracts.ts';
 import {owner,type Actor} from '../caller.ts';
+import {applicationPaths} from '../paths.ts';
 import {loadOfficialCatalog} from './catalog.ts';
 import {type OfficialManifest,type OfficialProvision,type OfficialEntry} from './contracts.ts';
+import {Accounts} from './accounts.ts';
+import type {AccountCreate,AccountReplace,AccountBinding} from './account-contracts.ts';
+import {OciRuntime} from './oci.ts';
+import {Preparation} from './preparation.ts';
+import {ComponentView,CapabilityInspection,type PreparationInput,type SourceSpec} from './preparation-contracts.ts';
 import { Connections } from './connections.ts';
 import { AccessRequest, AccessRelease, type AccessRecord, type AccessGrant, type EnvironmentChoice } from './contracts.ts';
 
 export type RackBackend = Pick<ContainerBackend,'ready'|'owned'|'remove'|'install'|'publishAuthority'|'start'|'inspect'>;
+// Only account-owner normalization may introduce a worker-attributed binding.
+// This authority never appears in command schemas, receipts, or wire requests.
+const preparedAccount=Symbol('prepared-account');
+type CommandContext={signal?:AbortSignal,candidates?:Record<string,string>,accountAuthority?:typeof preparedAccount};
 
 /** Owns configuration publication, release identity and runtime lifecycle. Callers never coordinate
  * database rows, containers, credentials or recovery. Observation never executes action tools.
@@ -23,9 +33,11 @@ export class EnvironmentRack {
   private observations=new Set<Promise<unknown>>();
   private closing=false;private installing=0;private observing=0;private ajv=new Ajv({strict:true,allErrors:true});
   readonly config:RackConfig;
+  private accounts!:Accounts;
+  private plans!:Preparation;private oci!:OciRuntime;
   private connections:Connections;private official!:OfficialManifest;private catalogFixture?:OfficialManifest;
   private backendFactory:(config:RackConfig,owner:string)=>RackBackend;
-  constructor(config:RackConfig,backendFactory:(config:RackConfig,owner:string)=>RackBackend=(config,owner)=>new ContainerBackend(config,owner),catalogFixture?:OfficialManifest){this.catalogFixture=catalogFixture;this.config=config;this.backendFactory=backendFactory;this.connections=new Connections(config);}
+  constructor(config:RackConfig,backendFactory:(config:RackConfig,owner:string)=>RackBackend=(config,owner)=>new ContainerBackend(config,owner),catalogFixture?:OfficialManifest){this.catalogFixture=catalogFixture;this.config=config;this.backendFactory=backendFactory;this.connections=new Connections(config,()=>this.accounts?.credentials()??{});}
   async open(){
     this.store=await RackStore.open(this.config.stateRoot,this.config.maxRecords);
     try{
@@ -34,6 +46,42 @@ export class EnvironmentRack {
       this.owner=this.store.get<string>('identity','owner')??randomUUID();this.store.put('identity','owner',this.owner);
       this.secret=this.store.get<string>('identity','secret')??randomBytes(32).toString('hex');this.store.put('identity','secret',this.secret);
       this.backend=this.backendFactory(this.config,this.owner);
+      this.accounts=await new Accounts(this.config).open();
+      this.oci=new OciRuntime(this.config,this.owner,this.store);
+      this.plans=new Preparation(this.config,this.store,{
+        source:async(spec,signal,candidates)=>{
+          if(spec.source.kind==='oci')return this.oci.source(spec);
+          if(spec.authentication.kind!=='oauth')return this.connections.source(spec,signal,candidates);
+          if(spec.connection.kind!=='http'||spec.source.kind!=='endpoint')throw new RackFault('AUTHENTICATION_TRANSPORT','OAuth account connections require an external HTTP endpoint');
+          const account=this.accounts.binding(spec.authentication.connectionId,spec.connection.url??spec.source.url,spec.authentication.scopes);
+          const result=await this.connections.source({...spec,authentication:{kind:'none'}},signal,candidates);
+          if(result.definition.kind!=='http')throw new RackFault('AUTHENTICATION_TRANSPORT','OAuth requires an HTTP definition');
+          if(Object.keys(result.definition.credentials).length)throw new RackFault('AUTHENTICATION_CONFLICT','Choose one account authentication method');
+          return {...result,definition:{...result.definition,account}};
+        },
+        register:async(id,name,definition,actor,previous)=>{
+          if(previous){const current=this.capability(previous.capabilityId,previous.revisionId) as ConnectionRevision;if(json(this.definitionValue(current))===json(definition)&&current.name===name)return current;return await this.execute({kind:'capability.revise',operationId:id,id:previous.capabilityId,expectedBase:previous.revisionId,entry:{name,definition}},actor,{accountAuthority:preparedAccount}) as ConnectionRevision;}
+          const result=await this.execute({kind:'capability.import',operationId:id,entries:[{name,definition}]},actor,{accountAuthority:preparedAccount}) as {capabilities:ConnectionRevision[]};return result.capabilities[0]!;
+        },
+        registered:id=>this.store.list<ConnectionRevision>('capability-revision').find(value=>value.operationId===id),
+        dependencies:async(component,signal,candidates)=>{
+          signal.throwIfAborted();
+          // Git installation has already built the exact release. Runtime membership
+          // and environment-scoped storage are established only by explicit Apply.
+          if('releaseId'in component){this.validateComponent(component);return;}
+          const definition=this.definition(component);
+          if(definition.kind==='http'&&definition.account)this.assertAccount(definition.account);
+          if(definition.kind==='stdio'&&definition.container)await this.oci.prepare(definition,signal);
+          else await this.connections.prepare(definition,signal,candidates);
+        },
+        git:async(id,spec,actor,registered)=>{if(spec.source.kind!=='git')throw new RackFault('SOURCE_KIND','Expected a Git source');const capability=await this.execute({kind:'capability.register',operationId:id,repository:spec.source.directory},actor) as ManagedCapability;registered(capability.id);return (await this.execute({kind:'release.install',operationId:`${id}-install`,packageId:capability.id,commit:spec.source.commit},actor) as Release).id;},
+        publish:async(id,input,environmentId,components,actor)=>await this.execute({kind:'environment.publish',operationId:id,expectedBase:input.expectRevision??null,document:{format:2,environmentId,name:input.name,description:input.description,components}},actor) as Revision,
+        apply:async(id,environmentId,revisionId,actor,signal,candidates)=>(await this.execute({kind:'environment.apply',operationId:id,environmentId,revisionId},actor,{signal,candidates}) as Realization).components,
+        revision:async(id,revision)=>(revision?await this.revision(id,revision):await this.head(id))??(()=>{throw new RackFault('NOT_FOUND','Environment does not exist',404);})(),
+        describe:async revision=>this.describe(revision),
+        acquire:(id,revision,workspace)=>this.acquireAccess({id,owner:this.owner,principal:'environment-validator',workspace,environment:{environmentId:revision.environmentId,revisionId:revision.revisionId,name:revision.name},requireHead:false}),
+        release:id=>this.releaseAccess({id,owner:this.owner}),
+      });await this.plans.recover();
       await mkdir(join(this.config.stateRoot,'environments'),{recursive:true});
       // Revisions and their head are authoritative even if a crash preceded the receipt commit.
       for(const op of this.store.list<Operation>('operation').filter(o=>o.state==='running')){
@@ -80,17 +128,65 @@ export class EnvironmentRack {
   }
   /** Inspect exact catalog revisions without preparing or launching anything. */
   capability(id:string,revisionId?:string):Capability{
-    if(revisionId)return this.required<ConnectionRevision>('capability-revision',`${id}/${revisionId}`);
-    return this.required<Capability>('capability',id);
+    const value=revisionId?this.required<ConnectionRevision>('capability-revision',`${id}/${revisionId}`):this.required<Capability>('capability',id);
+    return this.presentCapability(value);
+  }
+  /** Authentication revisions may preserve software declarations; source, launch or
+   * requirement changes terminate that inheritance. Endpoint/name matching never does it. */
+  private compatibleRevisions(value:ConnectionRevision):string[]{
+    const software=(revision:ConnectionRevision)=>{const {credentials,...definition}=this.definitionValue(revision);if('account'in definition)delete definition.account;return json(definition);};
+    const selected=software(value),revisions=[value.revisionId];let current=value;
+    while(current.baseRevisionId&&revisions.length<this.config.maxRevisions){
+      const previous=this.store.get<ConnectionRevision>('capability-revision',`${value.id}/${current.baseRevisionId}`);
+      if(!previous||software(previous)!==selected)break;
+      revisions.push(previous.revisionId);current=previous;
+    }
+    return revisions;
+  }
+  private presentCapability(value:Capability):Capability{
+    if(value.kind==='managed')return value;
+    for(const revision of this.compatibleRevisions(value)){
+      const name=this.plans.displayName(value.id,revision,value.name);if(name!==value.name)return {...value,name};
+    }
+    return value;
+  }
+  /** Read five-property facts and current dependency bytes without launching, installing
+   * or logging in. Validation evidence remains scoped to exact environment selections. */
+  async capabilityDetails(id:string,revisionId?:string):Promise<CapabilityInspection>{
+    const definition=this.capability(id,revisionId);if(definition.kind==='managed')throw new RackFault('CAPABILITY_KIND','Managed capability details belong to an exact installed release',400);
+    const component=this.describeComponent({id:definition.id,name:definition.name,definition:{capabilityId:definition.id,revisionId:definition.revisionId}});
+    const retained=this.plans.declarations(id,this.compatibleRevisions(definition),'capability');
+    if(retained?.requirements.resource)component.requirements.resource=retained.requirements.resource;
+    const dependencies=await this.connections.inspectDependencies(definition),installation=dependencies.installation;
+    component.evidence.dependencies=dependencies.error?'unavailable':'ready';component.error=dependencies.error??null;component.evidence.observedAt=dependencies.observedAt;
+    if(definition.kind==='stdio'&&definition.container&&!await this.oci.available(definition,'','')){component.evidence.dependencies='unavailable';component.error={code:'OCI_CAPACITY_UNAVAILABLE',message:'Explicitly prepare an available container instance before assigning this capability'};}
+    if(installation?.primary&&'version'in component.source)component.source={...component.source,version:installation.primary.version};
+    if(definition.kind==='http'&&definition.account)try{this.assertAccount(definition.account);}catch{component.evidence.authentication='action-needed';}
+    const environments:CapabilityInspection['environments']=[];
+    for(const environmentId of await readdir(join(this.config.stateRoot,'environments'))){
+      const head=await this.head(environmentId);if(!head)continue;
+      const selected=head.components.filter(value=>'definition'in value&&value.definition.capabilityId===id&&value.definition.revisionId===definition.revisionId);
+      if(!selected.length)continue;
+      const inspected=await this.plans.inspect(environmentId,head.revisionId);
+      for(const value of selected)environments.push({environmentId,revisionId:head.revisionId,name:head.name,componentId:value.id,evidence:inspected.components.find(item=>item.id===value.id)!.evidence});
+    }
+    return CapabilityInspection.parse({capabilityId:id,revisionId:definition.revisionId,component,...installation?{installation}:{},environments});
   }
   async preview(raw:unknown):Promise<ImportPreview>{
-    const input=PreviewInput.parse(raw),preview=await this.connections.preview(input);
-    for(const entry of preview.entries){if(this.store.list<Capability>('capability').some(capability=>capability.id!==input.capabilityId&&capability.name===entry.name))preview.errors.push({name:entry.name,code:'CAPABILITY_EXISTS',message:'Capability name already exists; use an explicit definition revision update'});}
-    return preview;
+    return this.connections.preview(PreviewInput.parse(raw));
   }
   private definition(component:Exclude<Component,ManagedComponent>):ConnectionRevision{
     const definition=this.capability(component.definition.capabilityId,component.definition.revisionId);
     if(definition.kind==='managed')throw new RackFault('DEFINITION_KIND','Select a connection definition');return definition;
+  }
+  /** A standalone capability's resource requirement follows its exact definition into
+   * every composition. Environment-specific constraints remain independently selectable. */
+  private componentResource(component:Component):Component{
+    const definition='definition'in component?this.definition(component):undefined;
+    const declared='releaseId'in component?this.plans.declarations(component.releaseId,[null],'capability')?.requirements.resource:this.plans.declarations(definition!.id,this.compatibleRevisions(definition!),'capability')?.requirements.resource;
+    if(!declared)return component;
+    if(component.resource&&(component.resource.identity!==declared.identity||declared.exclusive&&!component.resource.exclusive))throw new RackFault('RESOURCE_REQUIREMENT','Composition cannot replace or weaken the capability resource requirement');
+    return {...component,resource:component.resource??declared};
   }
   private serverName(id:string){return /^[A-Za-z0-9_-]{1,32}$/.test(id)?id:`c_${digest(id).slice(0,30)}`;}
   /** Applied heads remain selectable when individual capabilities become unavailable.
@@ -105,8 +201,11 @@ export class EnvironmentRack {
     return choices;
   }
   private preparation(revision:Revision){return this.store.list<Realization>('realization').filter(value=>value.environmentId===revision.environmentId&&value.revisionId===revision.revisionId&&value.status!=='applying').at(-1);}
-  private runtimePath(accessId:string,componentId:string){return join(this.config.stateRoot,'runtime',accessId,digest(componentId));}
-  private async resolveAccess(revision:Revision,access:AccessRequest):Promise<Array<{component:Component;mountId:string|null;server?:AccessGrant['servers'][number];runtime?:boolean;code:AccessGrant['components'][number]['code']}>>{
+  private dataPath(definition:ConnectionRevision,environmentId:string){return join(this.config.stateRoot,'data',definition.requirements.storage!.scope,definition.requirements.storage!.scope==='capability'?definition.id:environmentId,definition.id);}
+  // Session programs create Unix sockets beneath TMPDIR. Keep scratch independent
+  // of arbitrarily deep persistent/workspace paths while retaining stable ownership.
+  private runtimePath(accessId:string,componentId:string){return join(applicationPaths({env:{...process.env,POLARITON_DATA_DIR:this.config.stateRoot}}).runtime,'m',digest(json({accessId,componentId})).slice(0,16));}
+  private async resolveAccess(revision:Revision,access:AccessRequest):Promise<Array<{component:Component;mountId:string|null;server?:AccessGrant['servers'][number];runtime?:boolean;container?:(ConnectionRevision&{kind:'stdio'});code:AccessGrant['components'][number]['code']}>>{
     const realization=this.preparation(revision);
     if(!realization)throw new RackFault('ENVIRONMENT_UNAVAILABLE','Apply the selected environment revision before assigning it');
     const names=revision.components.map(component=>this.serverName(component.id));
@@ -122,8 +221,11 @@ export class EnvironmentRack {
       }else{
         // Invalid catalog references are identity errors, not endpoint availability.
         const definition=this.definition(component);
-        const runtime=definition.kind==='stdio'&&[...definition.args,...Object.values(definition.env)].some(value=>value.includes('${POLARITON_RUNTIME}'));
-        try{resolved.push({component,mountId:null,runtime,code:null,server:await this.connections.resolve(definition,this.serverName(component.id),{workspace:access.workspace,runtime:this.runtimePath(access.id,component.id)})});}
+        const runtime=definition.kind==='stdio'&&!definition.container;
+        if(definition.kind==='stdio'&&definition.container){resolved.push({component,mountId:null,container:definition,code:await this.oci.available(definition,access.id,component.id)?null:'PREPARATION_UNAVAILABLE'});continue;}
+        try{let server=await this.connections.resolve(definition,this.serverName(component.id),{workspace:access.workspace,runtime:this.runtimePath(access.id,component.id),data:definition.requirements.storage?this.dataPath(definition,revision.environmentId):undefined});
+          if(definition.kind==='http'&&definition.account){this.assertAccount(definition.account);if(!('type'in server))throw new RackFault('AUTHENTICATION_TRANSPORT','Account binding requires HTTP');const serverName=this.serverName(component.id);server={...server,credential:{socketPath:this.config.socketPath,accessId:access.id,serverName,token:this.credentialToken(access.id,serverName,definition.account)}};}
+          resolved.push({component,mountId:null,runtime,code:null,server});}
         catch{resolved.push({component,mountId:null,code:'CONNECTION_UNAVAILABLE'});}
       }
     }
@@ -149,12 +251,14 @@ export class EnvironmentRack {
         for(const item of resolved){
           const status:AccessGrant['components'][number]={componentId:item.component.id,serverName:this.serverName(item.component.id),status:'unavailable',code:item.code};components.push(status);
           if(item.code)continue;
-          const resource=item.component.resource;
+          const declared=item.component.resource;
+          const definition='releaseId'in item.component?null:this.definition(item.component),storage=definition?.requirements.storage;
+          const resources=[...declared?[declared]:[],...storage?[{identity:`data:${this.dataPath(definition!,revision.environmentId)}`,exclusive:storage.access==='exclusive'}]:[]];
           const conflicts=[...this.store.list<AccessRecord>('access').filter(value=>value.id!==owned.id&&value.state!=='released').flatMap(value=>value.resources),...this.store.list<Mount>('mount').filter(mount=>(mount.containerId!==null||mount.desired==='running'||mount.state==='draining')&&mount.id!==item.mountId).flatMap(mount=>mount.component.resource?[mount.component.resource]:[])];
-          if(resource&&conflicts.some(other=>resource.identity===other.identity&&(resource.exclusive||other.exclusive))){status.code='RESOURCE_BUSY';continue;}
+          if(resources.some(resource=>conflicts.some(other=>resource.identity===other.identity&&(resource.exclusive||other.exclusive)))){status.code='RESOURCE_BUSY';continue;}
           const previousResources=[...owned.resources],existingBinding=owned.bindings.find(value=>value.componentId===item.component.id),existingRuntime=owned.runtimeComponents.includes(item.component.id);
           // Journal reservations and cleanup intent before touching external authority or scratch.
-          if(resource){const index=owned.resources.findIndex(value=>value.identity===resource.identity);if(index<0)owned.resources.push(resource);else if(resource.exclusive)owned.resources[index]={...owned.resources[index]!,exclusive:true};}
+          for(const resource of resources){const index=owned.resources.findIndex(value=>value.identity===resource.identity);if(index<0)owned.resources.push(resource);else if(resource.exclusive)owned.resources[index]={...owned.resources[index]!,exclusive:true};}
           if(item.runtime&&!existingRuntime)owned.runtimeComponents.push(item.component.id);
           const binding=item.mountId?(existingBinding??{mountId:item.mountId,componentId:item.component.id,id:`a-${randomUUID()}`}):undefined;
           if(binding&&!existingBinding)owned.bindings.push(binding);
@@ -171,7 +275,8 @@ export class EnvironmentRack {
                 return this.bind(binding.mountId,binding.id,input.principal,'call',owned.id);
               });
               servers.push({type:'http',name:status.serverName,url:connection.url,headers:connection.headers});
-            }else servers.push(item.server!);
+            }else if(item.container)servers.push(await this.oci.claim(item.container,owned.id,item.component.id,status.serverName));
+            else servers.push(item.server!);
             status.status='ready';status.code=null;
           }catch(error){
             if(error instanceof RackFault&&['BINDING_CONFLICT','MOUNT_INCOMPATIBLE','DEFINITION_KIND','ACCESS_OWNER'].includes(error.code))throw error;
@@ -218,8 +323,9 @@ export class EnvironmentRack {
   private async revokeAccess(access:AccessRecord){
     access.state='releasing';this.store.put('access',access.id,access);
     let failed=false;
+    try{await this.oci.release(access.id);}catch{failed=true;}
     for(const entry of access.bindings){try{await this.releaseBinding(access,entry);}catch{failed=true;}}
-    if(access.runtimeComponents.length){try{await rm(join(this.config.stateRoot,'runtime',access.id),{recursive:true,force:true});}catch{failed=true;}}
+    for(const componentId of access.runtimeComponents){try{await rm(this.runtimePath(access.id,componentId),{recursive:true,force:true});}catch{failed=true;}}
     access.error=failed?'Grant or runtime cleanup did not settle; retry release':null;access.state=failed?'releasing':'released';this.store.put('access',access.id,access);
     if(failed){console.error(json({event:'environment.access.cleanup.pending',accessId:access.id}));throw new RackFault('ACCESS_CLEANUP_PENDING',access.error!);}
   }
@@ -245,10 +351,66 @@ export class EnvironmentRack {
   }
   async inventory():Promise<Inventory>{
     const environments=[];for(const id of await readdir(join(this.config.stateRoot,'environments'))){const head=await this.head(id);if(head)environments.push({id,head});}
-    return {capabilities:this.store.list('capability'),releases:this.store.list('release'),environments,mounts:this.store.list('mount'),realizations:this.store.list('realization'),activeRealizations:Object.fromEntries(environments.map(value=>[value.id,this.store.get<string>('active-realization',value.id)??''])),operations:this.store.list<Operation>('operation').map(op=>({...op,result:op.command.kind==='binding.create'?null:op.result})),observations:this.store.list<Observation>('observation').map(value=>({...value,stale:!value.available||Date.now()-Date.parse(value.observedAt)>this.config.observationFreshMs})),bindings:this.store.list<Binding>('binding').map(({hash,accessId,...binding})=>binding)};
+    return {capabilities:this.store.list<Capability>('capability').map(value=>this.presentCapability(value)),releases:this.store.list('release'),environments,preparations:this.plans.attention(),mounts:this.store.list('mount'),realizations:this.store.list('realization'),activeRealizations:Object.fromEntries(environments.map(value=>[value.id,this.store.get<string>('active-realization',value.id)??''])),operations:this.store.list<Operation>('operation').map(op=>({...op,result:op.command.kind==='binding.create'?null:op.result})),observations:this.store.list<Observation>('observation').map(value=>({...value,stale:!value.available||Date.now()-Date.parse(value.observedAt)>this.config.observationFreshMs})),bindings:this.store.list<Binding>('binding').map(({hash,accessId,...binding})=>binding)};
   }
   /** Public receipts omit connection secrets and retain failed recovery attempts. */
-  operation(id:string){const op=this.required<Operation>('operation',id);return {reference:`environment:${id}`,requestId:id,actor:op.actor,command:op.command.kind,input:op.command,state:op.state==='waiting'&&op.command.kind==='environment.apply'?'partial':op.state,result:op.result,error:op.error?{code:op.errorCode??'ENVIRONMENT_FAILED',message:op.error}:null,attempts:op.attempts.map(attempt=>({at:Date.parse(attempt.at),state:attempt.state,...attempt.error?{code:attempt.errorCode??'ENVIRONMENT_FAILED'}:{}}))};}
+  preparationPreview(input:PreparationInput){return this.plans.preview(input);}
+  inspect(id:string,revision?:string){return this.plans.inspect(id,revision);}
+  /** Expert composition still exposes the same capability properties. Preparation
+   * metadata enriches these facts, but is never required to inspect a valid revision. */
+  private describe(revision:Revision):ComponentView[]{
+    const prepared=this.preparation(revision);
+    return revision.components.map(component=>this.describeComponent(component,prepared?.components.find(value=>value.componentId===component.id),prepared?.createdAt));
+  }
+  private describeComponent(component:Component,outcome?:Realization['components'][number],observedAt?:string):ComponentView{
+      const common={id:component.id,name:component.name,error:outcome?.error?{code:outcome.errorCode??'PREPARATION_UNAVAILABLE',message:outcome.error}:null,evidence:{registered:true,dependencies:outcome?(outcome.error?'unavailable':'ready'):'unprepared',connection:'untested',tools:[],checks:[],observedAt:observedAt??null}};
+      if('releaseId'in component){const release=this.release(component.releaseId);return ComponentView.parse({...common,catalogId:release.packageId,capabilityId:release.id,capabilityRevisionId:null,source:{kind:'git',directory:join(release.source.repository,release.source.subdirectory),commit:release.commit},runtime:{kind:'container',configuration:component.configuration},connection:{kind:'http'},requirements:{resource:component.resource},authentication:{kind:'none'},evidence:{...common.evidence,authentication:'not-required'}});}
+      const definition=this.definition(component);
+      let source:SourceSpec;
+      if(definition.kind==='http')source={kind:'endpoint',url:definition.url};
+      else if(definition.container)source={kind:'oci',image:definition.container.image};
+      else if(definition.package){const recipe=definition.package;
+        if(recipe.manager==='npm'){const index=recipe.specifier.lastIndexOf('@');source={kind:'npm',identifier:index>0?recipe.specifier.slice(0,index):recipe.specifier,version:index>0?recipe.specifier.slice(index+1):'*',executable:recipe.executable};}
+        else if(recipe.manager==='uv'){const [identifier,version]=recipe.specifier.split('==');source={kind:'pypi',identifier:identifier!,version:version??'*',executable:recipe.executable};}
+        else if(recipe.manager==='mcpb')source={kind:'mcpb',url:recipe.url,sha256:recipe.sha256,configuration:recipe.configuration};
+        else source={kind:recipe.manager,identifier:recipe.identifier,version:recipe.version,...recipe.executable?{executable:recipe.executable}:{}};
+      }else source={kind:'installed',command:definition.command};
+      const {execution,...requirements}=definition.requirements;
+      const authentication=definition.kind==='http'&&definition.account?{kind:'oauth',connectionId:definition.account.connectionId,scopes:definition.account.scopes}:Object.keys(definition.credentials).length?{kind:'static'}:{kind:'none'};
+      const view=ComponentView.parse({...common,catalogId:definition.id,capabilityId:definition.id,capabilityRevisionId:definition.revisionId,source,runtime:{kind:definition.kind==='http'?'external':definition.container?'container':'local'},connection:definition.kind==='http'?{kind:'http',url:definition.url,headers:definition.headers}:{kind:'stdio',args:definition.args,env:definition.env},requirements:{...requirements,resource:component.resource,...definition.kind==='stdio'&&definition.package&&'assets'in definition.package?{assets:definition.package.assets}:{},...definition.kind==='stdio'&&definition.package&&'nativeBuild'in definition.package?{nativeBuild:definition.package.nativeBuild}:{}},authentication,evidence:{...common.evidence,authentication:authentication.kind==='none'?'not-required':authentication.kind==='static'?'referenced':'connected'}});
+      const retained=this.plans.declarations(definition.id,this.compatibleRevisions(definition));
+      if(retained){view.source=retained.source;view.checks=retained.checks;view.evidence.checks=retained.checks.map(check=>({name:check.name,status:'not-run'}));}
+      if(outcome?.installation?.primary&&'version'in view.source)view.source={...view.source,version:outcome.installation.primary.version};
+      return view;
+  }
+  operation(id:string){const modern=this.plans.operation(id);if(modern)return modern;const op=this.required<Operation>('operation',id);return {reference:`environment:${id}`,requestId:id,actor:op.actor,command:op.command.kind,input:op.command,state:op.state==='waiting'&&op.command.kind==='environment.apply'?'partial':op.state,result:op.result,error:op.error?{code:op.errorCode??'ENVIRONMENT_FAILED',message:op.error}:null,attempts:op.attempts.map(attempt=>({at:Date.parse(attempt.at),state:attempt.state,...attempt.error?{code:attempt.errorCode??'ENVIRONMENT_FAILED'}:{}}))};}
+  private assertAccount(binding:AccountBinding){const current=this.accounts.binding(binding.connectionId,binding.resource,binding.scopes);if(json(current)!==json(binding))throw new RackFault('ACCOUNT_BINDING_REVOKED','Account login changed; explicitly select a new capability revision');}
+  private credentialToken(accessId:string,serverName:string,binding:AccountBinding){return createHmac('sha256',this.secret).update(json({accessId,serverName,binding})).digest('base64url');}
+  /** A handle resolves only its retained active access, server, account and consent. */
+  async credential(input:{accessId:string,serverName:string},token:string):Promise<{accessToken:string}>{
+    const access=this.required<AccessRecord>('access',input.accessId);if(access.state!=='active'||!access.request)throw new RackFault('ACCESS_RELEASED','Credential access is no longer active',401);
+    const revision=await this.revision(access.request.environment.environmentId,access.request.environment.revisionId),component=revision.components.find(c=>this.serverName(c.id)===input.serverName);
+    if(!component||'releaseId'in component)throw new RackFault('ACCESS_SCOPE','Credential handle has no matching server',401);
+    const definition=this.definition(component);if(definition.kind!=='http'||!definition.account)throw new RackFault('ACCESS_SCOPE','Server has no account binding',401);
+    this.connections.validate(definition);
+    const actual=Buffer.from(token),expected=Buffer.from(this.credentialToken(input.accessId,input.serverName,definition.account));
+    if(actual.length!==expected.length||!timingSafeEqual(actual,expected))throw new RackFault('ACCESS_SCOPE','Invalid credential handle',401);
+    return {accessToken:await this.accounts.token(definition.account)};
+  }
+  async accountInventory(){const inventory=await this.inventory(),accounts=this.accounts.list();return {accounts,redirectUri:this.config.oauthCallbackPort?`http://127.0.0.1:${this.config.oauthCallbackPort}/oauth/callback`:null,affected:Object.fromEntries(accounts.map(account=>[account.id,inventory.environments.filter(e=>e.head.components.some(c=>{if('releaseId'in c)return false;const definition=this.definition(c);return definition.kind==='http'&&definition.account?.connectionId===account.id||Object.hasOwn(definition.credentials,account.id);})).length]))};}
+  account(id:string){return this.accounts.get(id);}
+  createAccount(input:AccountCreate){return this.accounts.create(input);}
+  replaceAccount(id:string,input:AccountReplace){return this.accounts.replace(id,input);}
+  connectAccount(id:string){return this.accounts.connect(id);}
+  async disconnectAccount(id:string){
+    const disconnected=await this.accounts.disconnect(id);let activeAccesses=0;
+    if(disconnected.account.kind==='static')for(const access of this.store.list<AccessRecord>('access')){
+      if(access.state==='released'||!access.request)continue;
+      const revision=await this.revision(access.request.environment.environmentId,access.request.environment.revisionId);
+      if(revision.components.some(component=>!('releaseId'in component)&&Object.hasOwn(this.definition(component).credentials,id)))activeAccesses++;
+    }
+    return {...disconnected,cleanup:activeAccesses?{status:'worker_restart_required' as const,activeAccesses}:{status:'settled' as const,activeAccesses:0 as const}};
+  }
   async publicationPreview(input:Extract<Command,{kind:'environment.publish'}>){
     const {document:doc,expectedBase}=input,pointer=await this.pointer(doc.environmentId),base=pointer?await this.revision(doc.environmentId,pointer.revisionId):null;
     if(pointer?.removed)throw new RackFault('ENVIRONMENT_REMOVED','Environment was removed');
@@ -257,19 +419,34 @@ export class EnvironmentRack {
     for(const component of doc.components)this.validateComponent(component);
     return {valid:true,base,document:doc,changed:base?json({...base,revisionId:undefined,baseRevisionId:undefined,createdAt:undefined,operationId:undefined})!==json(doc):true,reserved:false};
   }
-  async execute(input:unknown,actor:Actor=owner):Promise<unknown>{
-    const command=Command.parse(input);if(command.kind==='catalog.provision'&&actor.kind!=='owner')throw new RackFault('ACTOR_DENIED','Official provisioning requires the administrative owner',403);if(command.kind==='capability.import')for(const entry of command.entries)this.connections.validate(entry.definition);if(command.kind==='capability.revise')this.connections.validate(command.entry.definition);if(this.closing)throw new RackFault('SHUTTING_DOWN','EnvironmentDaemon is shutting down');
+  async execute(input:unknown,actor:Actor=owner,context?:CommandContext):Promise<unknown>{
+    const command=Command.parse(input);
+    if(command.kind==='capability.add')return this.plans.add(command.operationId,actor,command.input);
+    if(command.kind==='environment.prepare')return this.plans.prepare(command.operationId,actor,command.input);
+    if(command.kind==='environment.validate')return this.plans.validate(command.operationId,actor,command.input);
+    if(command.kind==='operation.continue')return this.plans.continue(command.operationId,actor,command.input);
+    if(command.kind==='operation.cancel')return this.plans.cancel(command.operationId,actor,command.input.target);
+    if(command.kind==='capability.complete')return this.plans.complete(command.operationId,actor,command.input);
+    if(command.kind==='capability.authenticate'&&actor.kind!=='owner')throw new RackFault('ACTOR_DENIED','Capability authentication requires the administrative owner',403);
+    if(command.kind==='catalog.provision'&&actor.kind!=='owner')throw new RackFault('ACTOR_DENIED','Official provisioning requires the administrative owner',403);if(command.kind==='capability.import')for(const entry of command.entries)this.connections.validate(entry.definition);if(command.kind==='capability.revise')this.connections.validate(command.entry.definition);if(this.closing)throw new RackFault('SHUTTING_DOWN','EnvironmentDaemon is shutting down');
     if(command.kind==='observe')return this.observe(command.mountId,command.uri);
     const key=command.kind==='environment.publish'?`environment:${command.document.environmentId}`:
       (command.kind==='environment.apply'||command.kind==='environment.remove')?`environment:${command.environmentId}`:
       command.kind==='release.install'?`package:${command.packageId}`:
       command.kind==='binding.create'?`mount:${command.mountId}`:
       command.kind==='binding.release'?`mount:${this.required<Binding>('binding',command.id).mountId}`:
-      ['capability.register','capability.import','capability.revise','catalog.provision'].includes(command.kind)?'catalog':`mount:${'id' in command?command.id:''}`;
+      ['capability.register','capability.import','capability.revise','capability.authenticate','catalog.provision'].includes(command.kind)?'catalog':`mount:${'id' in command?command.id:''}`;
     return this.withLock(`operation:${command.operationId}`,()=>this.withLock(key,async()=>{
       const prior=this.store.get<Operation>('operation',command.operationId);
       if(prior&&(json(prior.command)!==json(command)||prior.actor.kind!==actor.kind||prior.actor.id!==actor.id))throw new RackFault('OPERATION_CONFLICT','Operation ID was already used for different input');
       if(prior?.state==='succeeded')return command.kind==='binding.create'?this.connection(command.operationId):prior.result;
+      if(actor.kind!=='owner'&&context?.accountAuthority!==preparedAccount){
+        if(command.kind==='capability.import'&&command.entries.some(entry=>entry.definition.kind==='http'&&entry.definition.account))throw new RackFault('ACTOR_DENIED','OAuth bindings require account-owner normalization through preparation',403);
+        if(command.kind==='capability.revise'){
+          const current=this.capability(command.id),before=current.kind==='http'?current.account:undefined,after=command.entry.definition.kind==='http'?command.entry.definition.account:undefined;
+          if(json(before)!==json(after))throw new RackFault('ACTOR_DENIED','Changing an OAuth binding requires the administrative owner or scoped preparation',403);
+        }
+      }
       // Cleanup consumes an existing obligation. Its bounded reserve cannot be filled by
       // repeated failed attempts with fresh IDs; the original receipt must be retried.
       let recovery=false;
@@ -284,11 +461,11 @@ export class EnvironmentRack {
       }
       if((prior?.attempts.length??0)>=this.config.maxRecords)throw new RackFault('STATE_CAPACITY','Operation attempt retention is full');
       const op:Operation={actor,attempts:[...(prior?.attempts??[]),{at:new Date().toISOString(),state:'running',error:null}],id:command.operationId,command,state:'running',result:null,error:null};this.store.put('operation',op.id,op,recovery);
-      try{const result=await this.apply(command);if((command.kind==='mount.create'||command.kind==='mount.replace')&&(result as Mount).state==='failed')throw new RackFault('MOUNT_FAILED',(result as Mount).error??'Mount startup failed');const waiting=(command.kind==='environment.apply'&&(result as Realization).status!=='ready')||((command.kind==='mount.stop'||command.kind==='mount.replace')&&(result as Mount).state==='draining');op.state=waiting?'waiting':'succeeded';op.result=command.kind==='binding.create'?{bindingId:command.operationId}:result;op.attempts[op.attempts.length-1]={at:new Date().toISOString(),state:op.state,error:null};this.store.put('operation',op.id,op);return result;}
+      try{const result=await this.apply(command,context);if((command.kind==='mount.create'||command.kind==='mount.replace')&&(result as Mount).state==='failed')throw new RackFault('MOUNT_FAILED',(result as Mount).error??'Mount startup failed');const waiting=(command.kind==='environment.apply'&&(result as Realization).status!=='ready')||((command.kind==='mount.stop'||command.kind==='mount.replace')&&(result as Mount).state==='draining');op.state=waiting?'waiting':'succeeded';op.result=command.kind==='binding.create'?{bindingId:command.operationId}:result;op.attempts[op.attempts.length-1]={at:new Date().toISOString(),state:op.state,error:null};this.store.put('operation',op.id,op);return result;}
       catch(error){op.state='failed';op.error=error instanceof RackFault?error.message:'Environment operation failed';op.errorCode=error instanceof RackFault?error.code:'ENVIRONMENT_FAILED';op.attempts[op.attempts.length-1]={at:new Date().toISOString(),state:op.state,error:op.error,errorCode:op.errorCode};this.store.put('operation',op.id,op);console.error(json({event:'environment.operation.failed',operationId:op.id,kind:command.kind,code:op.errorCode,error:op.error}));throw error;}
     }));
   }
-  private async apply(command:Exclude<Command,{kind:'observe'}>):Promise<unknown>{
+  private async apply(command:Exclude<Command,{kind:'observe'}>,context?:CommandContext):Promise<unknown>{
     switch(command.kind){
       case 'catalog.provision':{
         const key=`${command.entryId}/${command.version}`;
@@ -315,7 +492,7 @@ export class EnvironmentRack {
             this.connections.validate(entry.definition);
             capability={...entry.definition,id,name,origin,revisionId:id,baseRevisionId:null,operationId:command.operationId,createdAt};
           }
-          if(this.store.get('capability',id)||this.store.list<Capability>('capability').some(value=>value.name===name))throw new RackFault('CAPABILITY_EXISTS','Official provisioning would overwrite an existing capability');
+          if(this.store.get('capability',id))throw new RackFault('CAPABILITY_EXISTS','Official provisioning would overwrite an existing capability');
           this.admitCapabilities(1);
           saved={entry,origin,capabilityId:id,releaseId:entry.definition.kind==='managed'?`or-${digest(key).slice(0,40)}`:null};
           this.store.transaction(()=>{this.store.put('capability',id,capability);if(capability.kind!=='managed')this.store.put('capability-revision',`${id}/${id}`,capability);this.store.put('official-provision',key,saved);});
@@ -331,7 +508,7 @@ export class EnvironmentRack {
         const id=command.id??registered?.id??`p-${digest(json(source)).slice(0,32)}`;
         const existing=this.store.get<Capability>('capability',id);
         if(existing&&(existing.kind!=='managed'||json(existing.source)!==json(source)))throw new RackFault('PACKAGE_EXISTS','Package already identifies a different source directory');
-        const value=existing??{kind:'managed' as const,id,name:basename(directory),source,createdAt:new Date().toISOString()};if(this.store.list<Capability>('capability').some(other=>other.id!==id&&other.name===value.name))throw new RackFault('CAPABILITY_EXISTS','Capability name already exists');this.admitCapabilities(existing?0:1);this.store.put('capability',value.id,value);return value;
+        const value=existing??{kind:'managed' as const,id,name:basename(directory),source,createdAt:new Date().toISOString()};this.admitCapabilities(existing?0:1);this.store.put('capability',value.id,value);return value;
       }
       case 'capability.import':{
         if(command.entries.length>this.config.maxImportEntries)throw new RackFault('IMPORT_LIMIT','Import entry count exceeds the configured limit');
@@ -341,23 +518,36 @@ export class EnvironmentRack {
           const id=`c-${digest(`${command.operationId}:${entry.name}`).slice(0,32)}`,revisionId=`r-${digest(`${command.operationId}:${entry.name}`).slice(0,32)}`;
           const saved=this.store.get<ConnectionRevision>('capability-revision',`${id}/${revisionId}`);
           if(saved){if(saved.name!==entry.name||json(this.definitionValue(saved))!==json(entry.definition))throw new RackFault('OPERATION_CONFLICT','Retained import differs from the operation');return saved;}
-          if(this.store.list<Capability>('capability').some(value=>value.name===entry.name))throw new RackFault('CAPABILITY_EXISTS','Capability name already exists; publish a deliberate revision');
           return {...entry.definition,id,name:entry.name,revisionId,baseRevisionId:null,operationId:command.operationId,createdAt:new Date().toISOString()};
         });
         this.admitCapabilities(capabilities.filter(value=>!this.store.get('capability',value.id)).length);
         this.store.transaction(()=>{for(const value of capabilities){if(!this.store.get('capability-revision',`${value.id}/${value.revisionId}`)){this.store.put('capability-revision',`${value.id}/${value.revisionId}`,value);this.store.put('capability',value.id,value);}}});
         return {capabilities};
       }
-      case 'capability.revise':{
+      case 'capability.revise':case 'capability.authenticate':{
         const saved=this.store.get<ConnectionRevision>('capability-revision',`${command.id}/${command.operationId}`);if(saved)return saved;
         const current=this.capability(command.id);
         if(current.origin)throw new RackFault('CATALOG_IMMUTABLE','Official definitions are immutable; import a separate customized capability');
         if(current.kind==='managed')throw new RackFault('CAPABILITY_KIND','Managed capabilities evolve through installed releases');
         if(current.revisionId!==command.expectedBase)throw new RackFault('STALE_REVISION','Capability definition changed; inspect its current revision');
-        if(command.entry.definition.kind!==current.kind)throw new RackFault('CAPABILITY_KIND','Changing transport requires a new capability');
-        if(this.store.list<Capability>('capability').some(value=>value.id!==command.id&&value.name===command.entry.name))throw new RackFault('CAPABILITY_EXISTS','Capability name already exists');
+        let entry;
+        if(command.kind==='capability.revise')entry=command.entry;
+        else{
+          const definition=this.definitionValue(current),authentication=command.authentication;
+          if(authentication.kind==='oauth'){
+            if(definition.kind!=='http')throw new RackFault('AUTHENTICATION_TRANSPORT','OAuth account connections require external HTTP');
+            if(Object.keys(definition.credentials).length)throw new RackFault('AUTHENTICATION_CONFLICT','Remove private credential references through a definition revision before selecting OAuth');
+            definition.account=this.accounts.binding(authentication.connectionId,definition.url,authentication.scopes);
+          }else{
+            if(authentication.kind==='none'&&Object.keys(definition.credentials).length)throw new RackFault('AUTHENTICATION_CONFLICT','No authentication cannot retain private credential references');
+            if(authentication.kind==='static'&&!Object.keys(definition.credentials).length)throw new RackFault('AUTHENTICATION_CONFLICT','Static authentication requires existing private credential references');
+            if(definition.kind==='http')delete definition.account;
+          }
+          this.connections.validate(definition);entry={name:current.name,definition};
+        }
+        if(entry.definition.kind!==current.kind)throw new RackFault('CAPABILITY_KIND','Changing transport requires a new capability');
         if(this.store.list<ConnectionRevision>('capability-revision').filter(value=>value.id===command.id).length>=this.config.maxRevisions)throw new RackFault('REVISION_CAPACITY','Retained capability revision capacity reached');
-        const value={...command.entry.definition,id:command.id,name:command.entry.name,revisionId:command.operationId,baseRevisionId:command.expectedBase,operationId:command.operationId,createdAt:new Date().toISOString()};
+        const value={...entry.definition,id:command.id,name:entry.name,revisionId:command.operationId,baseRevisionId:command.expectedBase,operationId:command.operationId,createdAt:new Date().toISOString()};
         this.store.transaction(()=>{this.store.put('capability-revision',`${value.id}/${value.revisionId}`,value);this.store.put('capability',value.id,value);});return value;
       }
       case 'release.install':{
@@ -373,7 +563,7 @@ export class EnvironmentRack {
         }finally{this.installing--;}
       }
       case 'environment.publish':{
-        const doc=command.document,pointer=await this.pointer(doc.environmentId);
+        const doc={...command.document,components:command.document.components.map(component=>this.componentResource(component))},pointer=await this.pointer(doc.environmentId);
         const head=pointer?await this.revision(doc.environmentId,pointer.revisionId):null;
         // A committed publication remains recoverable after newer heads or removal.
         // Recovery returns its receipt without clearing the current removal tombstone.
@@ -417,7 +607,7 @@ export class EnvironmentRack {
           if(!('releaseId' in component)){
             let error:string|null=null,errorCode:string|undefined;let readiness:Realization['components'][number]['readiness']='unavailable';
             let installation:Realization['components'][number]['installation'];
-            try{const definition=this.definition(component);installation=await this.connections.prepare(definition);readiness=definition.kind==='http'?'ready-to-connect':'ready-to-launch';}
+            try{const definition=this.definition(component);if(definition.requirements.storage)await mkdir(this.dataPath(definition,revision.environmentId),{recursive:true,mode:0o700});if(definition.kind==='http'&&definition.account)this.assertAccount(definition.account);if(definition.kind==='stdio'&&definition.container)await this.oci.prepare(definition,context?.signal);else installation=await this.connections.prepare(definition,context?.signal,context?.candidates);readiness=definition.kind==='http'?'ready-to-connect':'ready-to-launch';}
             catch(failure){error=failure instanceof RackFault?failure.message:'Connection preparation failed';errorCode=failure instanceof RackFault?failure.code:'CONNECTION_UNAVAILABLE';}
             realization.components=realization.components.filter(value=>value.componentId!==component.id);
             realization.components.push({componentId:component.id,mountId:null,error,...errorCode?{errorCode}:{},readiness,resource:component.resource?.identity??null,...(installation?{installation}:{})});this.store.put('realization',realization.id,realization);continue;
@@ -575,7 +765,11 @@ export class EnvironmentRack {
     });}}catch(error){console.error(json({event:'supervisor.monitor.failed',error:'Managed operation failed'}));}finally{this.monitoring=false;}
   }
   async close(){
-    this.closing=true;if(this.timer)clearInterval(this.timer);await Promise.allSettled([...this.locks.values(),...this.observations]);
+    this.closing=true;if(this.timer)clearInterval(this.timer);
+    await this.plans?.close();
+    await this.oci?.close();
+    await this.accounts?.close();
+    await Promise.allSettled([...this.locks.values(),...this.observations]);
     const failures:unknown[]=[];for(const mount of this.store.list<Mount>('mount'))if(mount.containerId){try{await this.backend.remove(mount.containerId);mount.containerId=null;mount.endpoint=null;mount.state='stopped';mount.interrupted=this.activeBindings(mount).length>0;this.store.put('mount',mount.id,mount);}catch(error){failures.push(error);}}
     this.store.close();if(failures.length)throw new AggregateError(failures,'Some mounted processes could not be stopped');
   }

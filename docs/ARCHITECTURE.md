@@ -38,10 +38,20 @@ not scheduling rules. Each node has an independent Git workspace. Multiple worke
 can share its files while keeping distinct conversations and execution context.
 The first worker has the same authority model as other workers.
 
-A checkpoint captures workspace files and publishes a retained Git reference.
-Publication coordinates concurrent captures, but does not freeze workers or
-external editors. A successful capture covers a verified interval, not a global
-atomic snapshot. Its publisher is not necessarily the author of every included file.
+A checkpoint registers a commit in the node's ordinary shared Git history and
+retains an exact reference. Publication runs `git add -A` against the shared index,
+commits changes or reuses unchanged `HEAD`, then records the authenticated publisher
+and optional note. It consumes partial staging and honors Git ignores, attributes,
+filters and hooks. Manual commits participate in the same history but do not create
+Polariton checkpoint metadata until published.
+
+Publication and managed uploads coordinate per node without blocking worker
+admission or ordinary editing. External Git operations must not overlap publication.
+The retained tree is what Git committed, not a verified interval or atomic workspace
+backup. Its publisher is not necessarily the author of every included file.
+Durable request identities recover the exact selected commit; missing or conflicting
+evidence produces an observable recovery conflict instead of a duplicate commit.
+See [checkpoint use and limits](GETTING_STARTED.md#save-a-checkpoint).
 
 ## Execution and history
 
@@ -57,11 +67,18 @@ must not start an agent or create a model request.
 
 ## Capabilities
 
-Registering a capability describes it. Applying an environment prepares selected
-revisions; sending a message does not install infrastructure. Worker assignments
-retain exact revisions so later edits cannot silently replace active tools.
-DSH calls authorized MCP servers directly; Environment owns preparation and grants.
-See [capability operations](ENVIRONMENT.md).
+Capabilities describe source, runtime, connection, requirements and authentication.
+Environment owns durable preparation, immutable artifacts, dependency resolution,
+account connections and access grants. One preparation operation can publish and
+prepare a complete environment; publication and readiness remain separate facts.
+Blocked operations retain versioned actions and recover through the same identity.
+
+Worker assignments retain exact revisions; sending or resuming a message never
+installs infrastructure. Harness owns session-scoped stdio processes and connects
+to MCP servers directly. A scoped authentication handle supplies live OAuth credentials
+without turning Main into a token store or replaying uncertain tool calls.
+Preparation, connection discovery and named functional validation provide distinct
+evidence. See [capability operations](ENVIRONMENT.md).
 
 ## Contributor boundaries
 

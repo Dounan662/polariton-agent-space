@@ -148,7 +148,7 @@ async function realFixture(t: TestContext) {
   const project = await tree.createProject(crypto.randomUUID(), 'Observation fixture'), node = crypto.randomUUID();
   await tree.mutate(project.id, { operationId: crypto.randomUUID(), revision: tree.graph(project.id).revision,
     command: { kind: 'node.create', id: node, title: 'Observed node', description: '' } });
-  t.after(async () => { tree.close(); await rm(root, { recursive: true, force: true }); });
+  t.after(async () => { await tree.close(); await rm(root, { recursive: true, force: true }); });
   return { tree, config, project: project.id, node, root, workspace: tree.workspace(project.id, node) };
 }
 

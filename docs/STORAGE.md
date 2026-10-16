@@ -12,7 +12,9 @@ Running from the repository stores persistent data outside the source checkout:
 On Linux, an absolute `XDG_DATA_HOME` replaces `~/.local/share`.
 The directory contains `app/` and `environment/`. Main's data includes research
 records, worker homes, session history, attachments, and provider settings.
-Environment data includes capability definitions, prepared artifacts, and access records.
+Environment data includes capability definitions, prepared artifacts, preparation
+receipts, account credentials and access records. Capability persistent data and
+container volumes need their own backup coverage.
 
 Projects created at a selected location keep their files there. Projects without
 an explicit location live beneath `app/projects/`. Backing up the data directory
@@ -78,6 +80,9 @@ configs. Retain its environment socket and Docker settings, point the app config
 `environmentConfig` to its peer config, and start with
 `npm start -- /absolute/path/to/app.json`. Keep that same config for stopping.
 Incompatible stored formats are rejected; a location change does not convert them.
+This source uses research storage version **5** and Environment storage version **9**.
+The new checkpoint and capability contracts require fresh state when upgrading from
+earlier experimental formats. Keep the original data and its compatible source build.
 
 Selecting a fresh data directory starts a separate instance. It is not migration.
 Moving a bundle can break stored absolute project, Harness, and environment paths.

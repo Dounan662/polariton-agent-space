@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {Fault} from '../contracts.ts';
-import {commands,discovery,type CommandName} from './contracts.ts';
+import {commands,discovery,automaticRequestId,type CommandName} from './contracts.ts';
 import {helpEntries} from './help-catalog.ts';
 
 const positive=z.number().int().positive();
@@ -11,7 +11,7 @@ export const helpPolicy=Object.freeze(HelpPolicy.parse({rootBytes:4096,inventory
 const categories={
  research:{name:'Research management',purpose:'Projects, research graphs, nodes, relations and checkpoints. Nodes own workspaces; relations describe connections without scheduling work.',resources:['project','graph','canvas','node','relation','checkpoint']},
  workers:{name:'Worker manipulation',purpose:'Inspect, create, configure and communicate with workers. Workers sharing a node have separate conversations and shared files.',resources:['worker']},
- tools:{name:'Environments and tools',purpose:'Catalog, capabilities, releases, environments, mounts and bindings. Registration, installation, publication and application are distinct operations.',resources:['catalog','capability','release','environment','mount','binding']},
+ tools:{name:'Environments and tools',purpose:'Prepare a capability, inspect its exact environment and validate its tools. Definition, installation and validation evidence remain separate.',resources:['catalog','capability','release','environment','mount','binding']},
  system:{name:'Daemon management and recovery',purpose:'Daemon lifecycle and owner command receipts. Retained request identity and outcome recovery apply to every category.',resources:['daemon','operation']},
 } as const;
 export type HelpCategory=keyof typeof categories;
@@ -29,6 +29,7 @@ export const HelpView=z.discriminatedUnion('kind',[
 export type HelpView=z.infer<typeof HelpView>;
 type Flags=Record<string,string|boolean>;
 const names=Object.keys(commands) as CommandName[];
+const commonTools:CommandName[]=['environment.prepare','environment.inspect','environment.validate','environment.list','capability.list','catalog.list'];
 const kebab=(value:string)=>value.replace(/[A-Z]/g,c=>`-${c.toLowerCase()}`);
 const spelling=(name:CommandName)=>name.replace('.',' ');
 function category(name:CommandName):HelpCategory{
@@ -77,7 +78,7 @@ function commandView(name:CommandName,details:boolean):HelpView{
  const entry=helpEntries[name];const inputs=fields(name);
  const clientInputs:z.infer<typeof argumentSchema>[]=[{name:'--input',type:'FILE|-; structured JSON',required:false},{name:'--json',type:'boolean; explicit JSON output (already the default)',required:false,default:false}];
  if((commands[name].mutation&&name!=='canvas.move')||name==='operation.get')clientInputs.push({name:'--details',type:'boolean; full retained receipt instead of compact receipt',required:false,default:false});
- if(commands[name].mutation){clientInputs.push({name:'--request-id',type:'UUID',required:name!=='worker.send'&&name!=='environment.publish',...(name==='worker.send'?{default:'generated UUID'}:{})});if(name!=='canvas.move')clientInputs.push({name:'--wait',type:'boolean',required:false,default:false});}
+ if(commands[name].mutation){clientInputs.push({name:'--request-id',type:'UUID',required:!automaticRequestId(name)&&name!=='environment.publish',...(automaticRequestId(name)?{default:'generated UUID'}:{})});if(name!=='canvas.move')clientInputs.push({name:'--wait',type:'boolean',required:false,default:false});}
  if(name==='operation.get')clientInputs.push({name:'--wait',type:'boolean',required:false,default:false});
  if(name==='worker.evidence'||name==='binding.create'||name==='canvas.snapshot')clientInputs.push({name:'--output',type:'FILE (exclusive creation)',required:name!=='canvas.snapshot'});
  if(name==='worker.send')clientInputs.push({name:'--text-stdin',type:'boolean',required:false,default:false});
@@ -91,7 +92,8 @@ function commandView(name:CommandName,details:boolean):HelpView{
  required.push(...clientInputs.filter(v=>v.required).map(v=>`${v.name} ${v.type==='UUID'?'UUID':'FILE'}`));
  const optionalTarget=name==='canvas.move'||inputs.some(v=>v.name==='TARGET'&&!v.required)?' [TARGET]':'';
  const example=`harnessctl ${spelling(name)}${entry.args.length?' '+entry.args.map(quote).join(' '):''}${entry.input?` <<'POLARITON_INPUT'\n${JSON.stringify(entry.input,null,2)}\nPOLARITON_INPUT`:''}`;
- return HelpView.parse({helpVersion:1,catalog:catalog(),kind:'command',command:spelling(name),category:category(name),purpose:commands[name].description,usage:`harnessctl ${spelling(name)}${required.length?' '+required.join(' '):''}${optionalTarget} [OPTIONS]`,inputs,clientInputs,constraints,example:{command:example,...(entry.input?{input:entry.input}:{}),placeholders:'Examples are templates: replace sample IDs/names/paths, EVIDENCE_REFERENCE and OFFERED_OPTION with real discovered values; choose a fresh request UUID for a new mutation. Match exact revisions to observed state.'},result:entry.result,...(details?{details:entry.details.length?entry.details:['Use the result’s continuation and retained references to inspect further. This command’s purpose, inputs and constraints above define its ordinary operation.']}:{}),next:[`harnessctl ${name.split('.')[0]} --help`,...(!details?[`harnessctl ${spelling(name)} --help --details`]:[]),`harnessctl ${spelling(name)} --help --schema --json`]});
+ const placeholders='Examples are templates: replace sample IDs/names/paths, EVIDENCE_REFERENCE and OFFERED_OPTION with real discovered values. Match exact revisions to observed state.'+(automaticRequestId(name)?' Omit --request-id for a new operation; retain the generated recovery identity.':commands[name].mutation?' Choose a fresh request UUID for a new mutation.':'');
+ return HelpView.parse({helpVersion:1,catalog:catalog(),kind:'command',command:spelling(name),category:category(name),purpose:commands[name].description,usage:`harnessctl ${spelling(name)}${required.length?' '+required.join(' '):''}${optionalTarget} [OPTIONS]`,inputs,clientInputs,constraints,example:{command:example,...(entry.input?{input:entry.input}:{}),placeholders},result:entry.result,...(details?{details:entry.details.length?entry.details:['Use the result’s continuation and retained references to inspect further. This command’s purpose, inputs and constraints above define its ordinary operation.']}:{}),next:[`harnessctl ${name.split('.')[0]} --help`,...(!details?[`harnessctl ${spelling(name)} --help --details`]:[]),`harnessctl ${spelling(name)} --help --schema --json`]});
 }
 function encoded(value:unknown,json:boolean){return json?JSON.stringify(value)+'\n':JSON.stringify(value,null,2)+'\n';}
 /** Text and JSON are renderings of the same complete view; no required field is truncated. */
@@ -143,7 +145,7 @@ export function helpOutput(words:string[],flags:Flags):string{
   if(matches.length>after&&!page.length)throw new Fault('HELP_SIZE_INVALID','A search entry exceeds its release budget.');
   budget=helpPolicy.searchBytes;
  }else if(command){view=commandView(command,Boolean(flags.details));budget=flags.details?helpPolicy.detailsBytes:helpPolicy.commandBytes;
- }else if(helpWords[0]){view=HelpView.parse({...common,kind:'inventory',scope:selection.scope,purpose:selection.purpose,commands:selection.names.map(summary),next:[`harnessctl help ${helpWords[0]} --search "intent"`,'harnessctl <resource> <verb> --help']});budget=helpPolicy.inventoryBytes;
- }else{view=HelpView.parse({...common,kind:'root',categories:(Object.keys(categories) as HelpCategory[]).map(selector=>({selector,name:categories[selector].name,purpose:categories[selector].purpose,help:`harnessctl help ${selector}`})),conventions:['Replace capital placeholders with supplied/discovered values. Use command help for required inputs and a valid example.','Domain results are JSON on stdout; retain stderr separately. Complex input uses --input FILE or --input - (JSON).','Managed workers receive installation and authentication automatically. --config FILE overrides HARNESSCTL_CONFIG, then the packaged default. Domain commands never start missing daemons.','worker send generates a request UUID; other mutations require a retained --request-id UUID except previews. Inspect uncertain outcomes with operation get.','--json selects JSON help and is accepted on domain commands, which already output JSON. With --help, --details expands guidance and --schema exports contracts; on receipt commands, --details returns the full retained receipt. Use bare switches or --flag VALUE, not --flag=VALUE.'],next:['harnessctl help --search "save progress"','harnessctl worker overview --help','harnessctl <resource> <verb> --help','harnessctl --help --schema --json']});budget=helpPolicy.rootBytes;}
+ }else if(helpWords[0]){view=HelpView.parse({...common,kind:'inventory',scope:selection.scope,purpose:selection.purpose,commands:(helpWords[0]==='tools'?commonTools:selection.names).map(summary),next:helpWords[0]==='tools'?['harnessctl operation continue --help',...categories.tools.resources.map(resource=>`harnessctl ${resource} --help`),'harnessctl help tools --search "intent"']:[`harnessctl help ${helpWords[0]} --search "intent"`,'harnessctl <resource> <verb> --help']});budget=helpPolicy.inventoryBytes;
+ }else{view=HelpView.parse({...common,kind:'root',categories:(Object.keys(categories) as HelpCategory[]).map(selector=>({selector,name:categories[selector].name,purpose:categories[selector].purpose,help:`harnessctl help ${selector}`})),conventions:['Replace capital placeholders with supplied/discovered values. Use command help for required inputs and a valid example.','Domain results are JSON on stdout; retain stderr separately. Complex input uses --input FILE or --input - (JSON).','Managed workers receive installation and authentication automatically. --config FILE overrides HARNESSCTL_CONFIG, then the packaged default. Domain commands never start missing daemons.','worker send, capability add/complete, environment prepare/validate and operation continue/cancel generate request UUIDs; other mutations require --request-id UUID except previews. Preserve the original recovery identity.','--json selects JSON help and is accepted on domain commands, which already output JSON. With --help, --details expands guidance and --schema exports contracts; on receipt commands, --details returns the full retained receipt. Use bare switches or --flag VALUE, not --flag=VALUE.'],next:['harnessctl help --search "save progress"','harnessctl worker overview --help','harnessctl <resource> <verb> --help','harnessctl --help --schema --json']});budget=helpPolicy.rootBytes;}
  return bound(renderHelp(view,Boolean(flags.json)),budget);
 }

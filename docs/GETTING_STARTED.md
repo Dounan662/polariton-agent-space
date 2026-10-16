@@ -27,17 +27,37 @@ your provider account and may incur charges. Keys are stored locally; see
    Reading saved history does not activate a model.
 
 Workers can run tools and change files within their granted access. Review
-permission requests and the files they produce.
+permission requests and the files they produce. Use **Open workspace folder in
+system file manager** in the workspace toolbar to open the selected node's files
+in Finder or the Linux desktop file manager. A desktop session is required; a
+failed launch is reported in the workspace.
 
 ## Save a checkpoint
 
-A checkpoint records the node's files in Git so you can inspect or continue from
-that saved state. Review the files before publishing. A checkpoint can include
-unfinished changes from other workers; it does not imply the work is complete
-or tested. Under continuous edits, capture can fail and need a later retry.
+A checkpoint retains a commit in the node's shared Git history. Publication stages
+all additions, modifications and deletions with `git add -A`, then commits changes
+or registers the existing `HEAD` when unchanged. It includes already staged work
+and replaces partial staging. Untracked ignored files stay excluded; tracked files
+remain included even if they match ignore rules. Git attributes, filters and hooks
+apply normally. Review important research outputs for Git inclusion before publishing.
 
-You can optionally continue a new node from a selected checkpoint. Its workers
-have separate execution context from the original node's workers.
+Finish immediate writes and avoid manual staging, commits or branch changes during
+publication. Workers can keep running, so a checkpoint may contain unfinished shared
+edits and files read at different times. It certifies neither tests nor scientific
+correctness. Resolve detached HEAD, conflicts or unfinished Git operations before
+retrying. After an uncertain outcome, inspect the original operation receipt rather
+than issuing a new publication identity.
+
+Manual commits advance history without creating a Polariton checkpoint. Publishing
+with no further edits registers that commit. Retained checkpoints survive later
+branch rewriting; different checkpoint notes can refer to the same commit.
+
+You can continue a new node from a selected checkpoint. It receives retained regular
+and executable files in an independent repository, without the source history or
+worker context. Symlinks, submodules, external Git LFS payloads and unsafe or non-UTF-8
+paths are not supported for inheritance. A committed external-content pointer does
+not back up its payload. File preview/upload limits do not limit checkpoint or
+inheritance size, but Git work still needs time, disk space and configured resources.
 
 ## Add tools when needed
 

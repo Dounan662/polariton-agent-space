@@ -2,6 +2,7 @@
 import {Socket} from 'node:net';
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local';
 import {z} from 'zod';
+import {drainMcp} from './native/mcp-client.mjs';
 /** @typedef {import('@deepseek-ai/dsh-subprocess').SubprocessRuntime} Runtime */
 /** @typedef {import('@deepseek-ai/dsh-subprocess').SubprocessHandle} ProcessHandle */
 /** @typedef {import('@deepseek-ai/dsh-subprocess').SubprocessTerminalHandle} TerminalHandle */
@@ -103,7 +104,7 @@ export default class OwnedSubprocessRuntime extends LocalSubprocessRuntime {
     this.owner=new ExecutionOwner({spawn:spec=>super.spawn(spec),spawnTerminal:spec=>super.spawnTerminal(spec),onFailure:error=>ctx.logger.error('Native execution ownership observation failed',error)});
     const maxFrameBytes=z.coerce.number().int().positive().parse(process.env.POLARITON_MAX_FRAME_BYTES);
     const socket=new Socket({fd:4});let buffered=Buffer.alloc(0);
-    const drain=async()=>{try{await this.owner.drain();return true;}catch(error){ctx.logger.error('Native execution drain failed',error);return false;}};
+    const drain=async()=>{try{await Promise.all([this.owner.drain(),drainMcp(ctx)]);return true;}catch(error){ctx.logger.error('Native execution drain failed',error);return false;}};
     socket.on('data',chunk=>{
       if(buffered.length+chunk.length>maxFrameBytes){socket.destroy(new Error('Oversized execution control frame'));return;}
       buffered=Buffer.concat([buffered,chunk]);
@@ -118,7 +119,7 @@ export default class OwnedSubprocessRuntime extends LocalSubprocessRuntime {
     });
     socket.on('error',error=>ctx.logger.error('Native execution control failed',error));
     socket.once('close',()=>{void drain();});
-    ctx.effect(()=>async()=>{await this.owner.drain();socket.destroy();});
+    ctx.effect(()=>async()=>{await Promise.all([this.owner.drain(),drainMcp(ctx)]);socket.destroy();});
   }
   /** @param {Parameters<Runtime['spawn']>[0]} spec */
   spawn(spec){return this.owner.spawn(spec);}

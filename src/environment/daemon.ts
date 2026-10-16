@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import {AccountCreate,AccountReplace} from './account-contracts.ts';
 import {Request as CliRequest} from '../cli/contracts.ts';
 import {Actor,owner} from '../caller.ts';
 import {environmentOperation} from '../cli/environment-operations.ts';
@@ -72,20 +73,29 @@ export async function createEnvironmentDaemon(config:RackConfig){
   try{
     let token:string;try{token=(JSON.parse(await readFile(join(config.stateRoot,'admin.json'),'utf8')) as {token:string}).token;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;token=randomBytes(32).toString('base64url');await durable(join(config.stateRoot,'admin.json'),{token});}
     let peer:string;try{peer=(JSON.parse(await readFile(join(config.stateRoot,'peer.json'),'utf8')) as {token:string}).token;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;peer=randomBytes(32).toString('base64url');await durable(join(config.stateRoot,'peer.json'),{token:peer});}
-    app.addHook('onRequest',async req=>{const actual=Buffer.from(req.headers.authorization??''),expected=Buffer.from(`Bearer ${token}`);if((actual.length!==expected.length||(!timingSafeEqual(actual,expected)&&!timingSafeEqual(actual,Buffer.from(`Bearer ${peer}`))))||req.headers.origin)throw new RackFault('AUTH_REQUIRED','Private administrative credential required',401);});
+    app.addHook('onRequest',async req=>{if(req.url==='/v1/access/credential'&&!req.headers.origin)return;const actual=Buffer.from(req.headers.authorization??''),expected=Buffer.from(`Bearer ${token}`);if((actual.length!==expected.length||(!timingSafeEqual(actual,expected)&&!timingSafeEqual(actual,Buffer.from(`Bearer ${peer}`))))||req.headers.origin)throw new RackFault('AUTH_REQUIRED','Private administrative credential required',401);});
     app.setErrorHandler((error,_request,reply)=>{if(error instanceof JsonInputError)return reply.code(400).send({error:{code:error.code,message:error.message}});if(error instanceof z.ZodError)return reply.code(400).send({error:{code:'INVALID_INPUT',message:'Administrative input does not match the supported contract'}});if(error instanceof RackFault)return reply.code(error.status).send({error:{code:error.code,message:error.message}});app.log.error({code:'RACK_FAILED'},'Administrative operation failed');return reply.code(500).send({error:{code:'RACK_FAILED',message:'Administrative operation failed; inspect retained operation status'}});});
     app.post('/v1/cli',req=>{const body=z.object({request:CliRequest,actor:Actor.default(owner)}).strict().parse(req.body);if(body.actor.kind!=='owner'&&req.headers.authorization!==`Bearer ${peer}`)throw new RackFault('ACTOR_DENIED','Worker attribution requires the authenticated Main peer',403);return environmentOperation(rack,body.request,body.actor);});
+    const accountOwner=(authorization:string|undefined)=>{if(authorization!==`Bearer ${token}`)throw new RackFault('ACTOR_DENIED','Account changes require the authenticated administrative owner',403);};
+    app.get('/v1/accounts',req=>{accountOwner(req.headers.authorization);return rack.accountInventory();});
+    app.post('/v1/accounts',req=>{accountOwner(req.headers.authorization);return rack.createAccount(AccountCreate.parse(req.body));});
+    app.get('/v1/accounts/:id',req=>{accountOwner(req.headers.authorization);return rack.account(z.object({id:Key}).parse(req.params).id);});
+    app.post('/v1/accounts/:id/connect',req=>{accountOwner(req.headers.authorization);return rack.connectAccount(z.object({id:Key}).parse(req.params).id);});
+    app.post('/v1/accounts/:id/replace',req=>{accountOwner(req.headers.authorization);return rack.replaceAccount(z.object({id:Key}).parse(req.params).id,AccountReplace.parse(req.body));});
+    app.post('/v1/accounts/:id/disconnect',req=>{accountOwner(req.headers.authorization);return rack.disconnectAccount(z.object({id:Key}).parse(req.params).id);});
+    app.post('/v1/access/credential',req=>{if(req.headers.origin)throw new RackFault('ACCESS_SCOPE','Private credential handle required',401);return rack.credential(z.object({accessId:Key,serverName:Key}).strict().parse(req.body),(req.headers.authorization??'').replace(/^Bearer /,''));});
     app.get('/v1/health',()=>({ready:true,daemon:'environment',pid:process.pid,stateRoot:config.stateRoot}));
     app.get('/v1/inventory',()=>rack.inventory());
     app.post('/v1/capabilities/preview',req=>rack.preview(PreviewInput.parse(req.body)));
     app.get('/v1/capabilities/:id',req=>rack.capability(z.object({id:Key}).parse(req.params).id));
+    app.get('/v1/capabilities/:id/inspection',req=>{const p=z.object({id:Key}).parse(req.params),query=z.object({revision:Key.optional()}).strict().parse(req.query);return rack.capabilityDetails(p.id,query.revision);});
     app.get('/v1/capabilities/:id/revisions/:revision',req=>{const p=z.object({id:Key,revision:Key}).parse(req.params);return rack.capability(p.id,p.revision);});
     app.get('/v1/access/choices',()=>rack.choices());
     app.post('/v1/access/acquire',req=>rack.acquireAccess(AccessRequest.parse(req.body)));
     app.post('/v1/access/release',async req=>{await rack.releaseAccess(AccessRelease.parse(req.body));return {released:true};});
     app.get('/v1/releases/:release/provenance',req=>rack.provenance(z.object({release:Key}).parse(req.params).release));
     app.get('/v1/revisions/:environment/:revision',req=>{const p=z.object({environment:Key,revision:Key}).parse(req.params);return rack.revision(p.environment,p.revision);});
-    app.post('/v1/command',req=>rack.execute(req.body));
+    app.post('/v1/command',req=>{accountOwner(req.headers.authorization);return rack.execute(req.body);});
     app.post('/v1/shutdown',(_req,reply)=>{reply.send({stopping:true});setImmediate(()=>void app.close().catch(error=>{console.error(error);process.exitCode=1;}));});
     try{const prior=await lstat(config.socketPath);if(!prior.isSocket()||prior.uid!==process.getuid?.())throw new RackFault('SOCKET_CONFLICT','Administrative socket path is occupied');
       try{await socketRequest(config.socketPath,token,'/v1/health',undefined,config.observationTimeoutMs,config.maxBodyBytes);throw new RackFault('SOCKET_OWNED','Administrative socket is already serving');}catch(error){if((error as NodeJS.ErrnoException).code!=='ECONNREFUSED'&&(error as NodeJS.ErrnoException).code!=='ENOENT')throw error;await unlink(config.socketPath);}

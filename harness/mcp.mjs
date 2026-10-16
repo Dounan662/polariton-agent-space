@@ -3,16 +3,14 @@ import { createHash } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { validateHeaderName, validateHeaderValue } from 'node:http';
 import { z } from 'zod';
-import * as McpClient from '@deepseek-ai/dsh-mcp-client';
+import * as McpClient from './native/mcp-client.mjs';
+import {McpServerPlan,McpValidationInput,McpValidationLimits} from './mcp-contracts.ts';
+import {credentialProvider} from './mcp-credentials.ts';
 
 const Entry = z.object({name:z.string(),value:z.string()}).strict();
-const Server = z.union([
-  z.object({name:z.string(),command:z.string().refine(isAbsolute),args:z.array(z.string()),env:z.array(Entry)}).strict(),
-  z.object({name:z.string(),type:z.literal('http'),url:z.url().refine(value=>['http:','https:'].includes(new URL(value).protocol)),headers:z.array(Entry)}).strict(),
-]);
-const Plan = z.object({cwd:z.string().refine(isAbsolute),servers:z.array(Server)}).strict();
+const Plan = z.object({cwd:z.string().refine(isAbsolute),servers:z.array(McpServerPlan)}).strict();
 const Context = z.object({sessionId:z.string(),servers:z.array(z.object({serverName:z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),status:z.literal('unavailable'),code:z.string().max(64).regex(/^[A-Z][A-Z0-9_]*$/)}).strict())}).strict();
-const Limits = z.object({startupMs:z.number().int().positive(),cleanupMs:z.number().int().positive()}).strict();
+const Limits = z.object({startupMs:z.number().int().positive(),cleanupMs:z.number().int().positive(),callMs:z.number().int().positive(),credentialMs:z.number().int().positive(),maxCredentialBytes:z.number().int().positive()}).strict();
 
 /** ACP's stable namespace normalization, applied to every declaration before any connection starts. */
 /** @param {string} name */
@@ -33,7 +31,7 @@ function entries(values,header) {
   return result;
 }
 /** @template T @param {PromiseLike<T>} promise @param {number} ms @param {AbortSignal} [signal] @returns {Promise<T>} */
-function deadline(promise,ms,signal) {
+export function deadline(promise,ms,signal) {
   return new Promise((resolve,reject)=>{
     const aborted=()=>finish(Object.assign(new Error('MCP setup cancelled'),{code:'MCP_CANCELLED'}));
     const timer=setTimeout(()=>finish(Object.assign(new Error('MCP setup timed out'),{code:'MCP_STARTUP_TIMEOUT'})),ms);
@@ -43,6 +41,33 @@ function deadline(promise,ms,signal) {
     if(signal?.aborted)aborted();
     Promise.resolve(promise).then(value=>finish(null,value),error=>finish(error));
   });
+}
+
+/** Resolve declarations once for both workers and inference-free validation. */
+/** @param {unknown} input @param {z.infer<typeof Limits>} limits */
+export function connectionPlans(input,limits) {
+  const {cwd,servers}=Plan.parse(input),names=new Set();
+  return servers.map(server=>{
+    const name=serverName(server.name);if(names.has(name))throw new Error('Duplicate MCP namespace');names.add(name);
+    const common={serverName:name,protocol:server.protocol??'auto',failOnStartupError:true,reconnect:{enabled:false},cleanupTimeoutMs:limits.cleanupMs,toolCallTimeoutMs:limits.callMs};
+    /** @type {NonNullable<Parameters<typeof McpClient.Config>[0]>} */
+    const config='type'in server?{...common,transport:'streamable-http',url:server.url,headers:entries(server.headers,true)}:{...common,transport:'stdio',command:server.command,args:server.args,env:entries(server.env,false),cwd};
+    if('type'in server&&server.credential){
+      if(server.credential.serverName!==name||server.headers.some(entry=>entry.name.toLowerCase()==='authorization'))throw new Error('Credential binding conflicts with server authority');
+      config.credentialProvider=credentialProvider(server.credential,{timeoutMs:limits.credentialMs,maxBytes:limits.maxCredentialBytes});
+    }
+    return {...McpClient.Config(config),...(config.transport==='streamable-http'?{headers:config.headers??{}}:{env:config.env??{}})};
+  });
+}
+
+/** Reject invalid validation authority before the supervisor launches any owner. */
+/** @param {unknown} input @param {unknown} budget */
+export function validationPlan(input,budget) {
+  const plan=McpValidationInput.parse(input),limits=McpValidationLimits.parse(budget);
+  if(plan.checks.length>limits.maxChecks||new Set(plan.checks.map(check=>check.name)).size!==plan.checks.length)throw new Error('Functional checks exceed the budget or have duplicate names');
+  const configs=connectionPlans({cwd:plan.cwd,servers:plan.servers},{...limits,credentialMs:limits.callMs,maxCredentialBytes:limits.maxOutputBytes});
+  for(const check of plan.checks)if(!configs.some(config=>config.serverName===check.serverName))throw new Error('Functional check references an unknown server');
+  return {plan,limits,configs};
 }
 
 /**
@@ -91,14 +116,7 @@ export class McpAdmission {
   prepare(input) {
     if(this.pending)throw new Error('MCP activation is already pending');
     try {
-      const {cwd,servers}=Plan.parse(input),names=new Set();
-      const configs=servers.map(server=>{
-        const name=serverName(server.name);if(names.has(name))throw new Error('Duplicate MCP namespace');names.add(name);
-        const common={serverName:name,failOnStartupError:true,reconnect:{enabled:false}};
-        /** @type {NonNullable<Parameters<typeof McpClient.Config>[0]>} */
-        const config='type'in server?{...common,transport:'streamable-http',url:server.url,headers:entries(server.headers,true)}:{...common,transport:'stdio',command:server.command,args:server.args,env:entries(server.env,false),cwd};
-        return {...McpClient.Config(config),...(config.transport==='streamable-http'?{headers:config.headers??{}}:{env:config.env??{}})};
-      });
+      const configs=connectionPlans(input,this.limits);
       this.pending=configs;return {prepared:true};
     }catch{throw new Error('Invalid MCP declarations; check names, transports and connection fields');}
   }

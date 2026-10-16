@@ -1,82 +1,113 @@
 ---
 name: make-polariton-tool
-description: Register existing MCP servers, prepare npm/Python MCP packages, build managed MCP capabilities, and publish or apply Polariton environments through its public CLI. Includes the contracts and authoring template needed without reading Polariton source.
+description: Build original MCP tools or prepare existing packages, bundles and endpoints through Polariton's public environment operations. Use for capability authoring, deployment, validation and preparation recovery.
 ---
 
 # Make a Polariton tool
 
-Deliver the requested tool or environment using this skill's public contracts. This
-folder contains the registration formats, mutation schemas, lifecycle guidance and
-managed-server starter. Do not inspect Polariton's implementation, internal databases,
-harness configuration or private access records to accomplish tool authoring. A
-missing public capability is a limitation to report, not a reason to reverse-engineer
-private state. The skill does not grant additional host, account or Docker authority.
+Deliver the requested capability through EnvironmentDaemon's public contracts. The
+common path is **prepare, inspect, validate**. The daemon owns source resolution,
+dependencies, exact artifacts and durable recovery; the worker supplies the intended
+capability and resolves explicit choices. Do not inspect implementation source,
+internal databases, private configuration or access records to author a tool.
 
-## Choose the smallest supported path
+## Choose a complete operation
 
-- Existing HTTP endpoint, installed foreground program, or published npm/Python MCP
-  package: use [MCP registration](references/mcp.md). Normally this is one configuration,
-  preview (plus executable confirmation if needed), and one atomic import. Do not
-  clone repositories or create workspace-local MCP installations for this path.
-- Publish, update, apply or diagnose an environment: use
-  [Environment operations](references/environment.md). Reuse existing capabilities
-  and retained releases from inventory; publish the complete intended document.
-- A new domain operation requires source you own: use
-  [Managed authoring](references/managed.md) and copy the bundled
-  [managed starter](assets/managed/). It includes its authorization helper, manifest,
-  dependency lock and working MCP contract test. Author in a package directory inside
-  the current workspace's Git repository, such as `capabilities/my-tool/`.
+For capability-only requests, use `harnessctl capability add` to retain the source,
+then `capability complete` to finish setup on that capability. This never creates an
+environment. A human can finish authentication in **Environment → Capabilities**.
+See [Capability preparation](references/preparation.md) for the input contract.
 
-Read only the reference needed for the chosen path. More than one path may apply.
-Do not create a new managed repository merely to wrap an existing MCP package or URL.
+When the task also requests a usable environment, the compound preparation operation
+creates and prepares it from an MCP package, endpoint or full specification:
 
-## Public command entry
+```sh
+harnessctl environment prepare --name Browser --source npm:@playwright/mcp@0.0.83
+```
 
-Node 24.11.0 or newer and the required running daemons are prerequisites. Main-managed
-workers receive `harnessctl` on PATH and authenticated installation context. For an
-external caller, invoke the installed `bin/harnessctl` and supply `--config` pointing
-to the installation's **app configuration**, which identifies both peer daemons.
-Explicit configuration overrides `HARNESSCTL_CONFIG`; cwd never chooses a worker.
+This version illustrates syntax. Use the source and explicit version selected for
+the requested task. The response supplies exact environment/revision IDs, accepted
+defaults, separate evidence and any required next action. No normalized import JSON,
+launcher path or manually composed environment is needed for the common path.
+
+- For mixed capabilities, authentication, named functional checks or application
+  assets, the same prepare operation accepts a complete specification with `--input`.
+- For a new domain operation whose source you own, read
+  [Managed authoring](references/managed.md) and use the [starter](assets/managed/).
+  Write and test the domain code in the current workspace, commit its package
+  directory, then use the reference's complete Git-source `environment prepare`
+  specification. No registry publication or separate repository is required.
+  Do not wrap a third-party package merely to fit a managed template.
+- For deliberate definition-only registration or revision, use
+  [MCP registration](references/mcp.md). For expert composition and managed lifecycle
+  control, use [Environment operations](references/environment.md).
+
+Read the reference needed for the chosen task. A registry format does not guarantee
+that every runtime combination or prerequisite is supported. Report a retained
+unsupported result; never substitute an unrelated shell installation as proof.
+
+## Public command entry and recovery
+
+Main-managed workers receive `harnessctl` on PATH and authenticated installation
+context. External callers use the installed `bin/harnessctl` and an explicit
+`--config` pointing to its app configuration. Node 24.11.0 or newer and running
+peer daemons are prerequisites; cwd never chooses a worker or installation.
 
 ```sh
 harnessctl help tools
-harnessctl capability list
-harnessctl environment list
+harnessctl environment prepare --help
+harnessctl environment inspect ENVIRONMENT_ID
+harnessctl environment validate ENVIRONMENT_ID --revision REVISION_ID
 ```
 
-Command-specific `--help` supplies required arguments, constraints and an example.
-Use `--help --details` for operating guidance, or explicitly request the exact input
-and output schemas with `--help --schema --json`. `--json` selects representation
-without adding detail. Domain command stdout contains JSON including errors;
-diagnostics use stderr. Successful query data is under `data`; mutations
-return an owner receipt under `data`, whose `result` contains the domain outcome.
-Generate and retain a UUID **before** each mutation and pass `--request-id UUID`.
-Use `--input FILE|-` for structured JSON. After a lost reply, inspect the owner
-operation reference or repeat the identical command with the retained request ID.
-Do not create a new identity to evade an uncertain outcome. Partial preparation
-and failed operations return nonzero status with their retained receipts.
+Help is offline. Command help explains necessary inputs; `--help --details` expands
+guidance and `--help --schema --json` exports the exact contract when needed.
+`--json` changes representation, never detail. Domain stdout contains JSON under
+`data`; mutation outcomes are under `data.result`. Keep stderr: prepare, validate,
+continue and cancel generate a UUID and flush a recovery envelope before dispatch.
+Omit `--request-id` for a new complete operation; no separate UUID-generation step is
+needed. You may instead supply your own retained `--request-id UUID`. Other expert mutations
+require one. The owner durably records effects; the CLI keeps no private journal.
+Use compact command output first. If you save output, retain stdout and stderr
+without truncation; pipelines such as `head` or `tail` can lose recovery identity and
+hide the command's exit status.
 
-Do not inspect private state, switch installations, or start another daemon to get
-around an error. Direct CLI credentials authenticate the initiating worker; sender
-arguments and environment identity hints cannot impersonate another worker.
+After a lost response, inspect its owner-qualified operation reference. Retry only
+with the identical request ID/input, or resolve a specific pending action through
+`operation continue`. A new ID is a new request. Observer timeout does not cancel
+work. Preserve failed, blocked, partial and uncertain outcomes; inspect `--details`
+for retained attempts and provenance. Do not switch installations or start another
+daemon to evade an error.
 
-## Complete the requested work
+## Finish with evidence
 
-Keep installation, local preparation, live MCP discovery and application readiness
-separate in the result. EnvironmentDaemon owns preparation: managed release installation
-and explicit Apply can start the configured dedicated container runtime, fetch dependencies
-and start managed containers. Workers do not run Docker or Colima commands, create host
-directories outside their workspace, or request broader permissions to repair the runtime.
-Report a retained preparation error when operator provisioning is required. Send does
-not prepare infrastructure. DSH owns MCP connections and execution; Main owns worker
-assignment. An unavailable MCP component is reported independently so the worker can
-continue with healthy tools and ordinary conversation; never claim the missing tool
-ran or that a dependent scientific task succeeded.
+Keep registration, dependencies ready, authentication, connection, discovered tools
+and functional checks distinct. Default validation is inference-free connection and
+discovery through Harness. `--check NAME` runs an explicitly declared functional
+check with its stated effects; tool annotations are not a safety guarantee. A
+Playwright test must actually navigate/interact through the prepared MCP connection.
+A separately launched browser or a successful tools list is insufficient.
 
-Return capability/revision IDs, environment/revision IDs, per-component preparation
-outcomes, tested results and actionable remaining prerequisites. Worker assignment
-remains the user's composer action; do not create or assign a consumer worker as an
-installation step. Existing workers retain their assigned revision. Verify only
-resources within the user's requested scope; paid provider tests require an existing
-approved allowance. Successful package preparation does not certify a named desktop
-application, start its bridge, or isolate its global state.
+A worker may inspect readable locations and propose a dependency path through a
+pending action. The daemon validates the candidate; do not alter global PATH, run
+package installers or container commands to repair preparation, or read private
+credentials. Account login and consent require the owner UI. Pending components
+appear in **Environment → Capabilities** before login. Give the human the capability
+name, component ID and retained operation reference; its full page owns account setup.
+Completing a standalone capability never creates an environment. For a capability
+in an existing environment preparation, continue that original plan explicitly after
+its required setup is resolved. The UI creates environments by selecting existing
+capabilities; sources and authentication belong to the capability page.
+OAuth connections bind one protected resource: use separate connection IDs for
+different endpoints, even for the same provider and human account. Read the account
+workflow in [Capability preparation](references/preparation.md). Never ask for
+client secrets or tokens in chat or write them into specifications. A raw endpoint
+import neither retains the OAuth setup action nor makes the capability authenticated;
+do not replace a blocked preparation with a bare import.
+
+Return exact capability/environment revisions, tested outcomes and remaining actions.
+Send and resume never prepare infrastructure. Healthy components and conversation
+remain available when another component fails. Worker assignment is immutable after
+activation. Create a separate consumer worker only when the task explicitly requests
+one; installation and validation do not create or assign workers. Real-provider
+consumer tests use the authorized bounded allowance and the exact prepared revision.

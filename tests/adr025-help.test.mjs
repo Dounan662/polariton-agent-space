@@ -21,7 +21,7 @@ test('progressive help narrows four categories and resources without exposing sc
  const root=view([]);assert.equal(root.kind,'root');assert.equal(root.categories.length,4);
  assert.deepEqual(view(['help']),root);assert.deepEqual(view(['--help']),root);
  const covered=[];
- for(const {selector} of root.categories){const category=view(['help',selector]);assert.equal(category.kind,'inventory');assert(category.commands.every(command=>command.category===selector));covered.push(...category.commands.map(c=>c.command.replace(' ','.')));}
+ for(const {selector} of root.categories){const category=view(['help',selector]);assert.equal(category.kind,'inventory');assert(category.commands.every(command=>command.category===selector));if(selector==='tools'){assert.deepEqual(category.commands.slice(0,3).map(c=>c.command),['environment prepare','environment inspect','environment validate']);for(const resource of ['catalog','capability','release','environment','mount','binding']){assert(category.next.includes(`harnessctl ${resource} --help`));covered.push(...view([resource,'--help']).commands.map(c=>c.command.replace(' ','.')));}}else covered.push(...category.commands.map(c=>c.command.replace(' ','.')));}
  assert.deepEqual(covered.sort(),Object.keys(commands).sort(),'Exactly one category must contain every executable command');
  const workers=view(['worker','--help']);assert(workers.commands.every(c=>c.command.startsWith('worker ')));assert(workers.commands.some(c=>c.command==='worker overview'));
  const target=view(['worker','send','--help']);assert.equal(target.kind,'command');assert.equal(target.command,'worker send');assert.match(target.result,/acceptance.*not.*completion/);
@@ -57,6 +57,31 @@ test('caller requirements, defaults, output files and cross-field conditions mat
  const publish=helpEntries['environment.publish'];assert.equal(parse(['environment','publish','--preview','--input','-'],publish.input).request.requestId,undefined);
  assert.match(view(['environment','publish','--help']).constraints.join(' '),/required unless --preview/);
  assert.match(view(['checkpoint','publish','--help']).constraints.join(' '),/shared unfinished/);
+});
+
+test('complete preparation commands generate recoverable identities and preserve consequential choices',()=>{
+ const first=parse(['environment','prepare','--name','Browser','--source','npm:@playwright/mcp@0.0.83']);
+ const second=parse(['environment','prepare','--name','Browser','--source','npm:@playwright/mcp@0.0.83']);
+ assert(first.request.requestId);assert.notEqual(first.request.requestId,second.request.requestId);
+ assert.equal(parse(['environment','prepare','--name','Browser','--source','npm:@playwright/mcp@0.0.83','--request-id',request]).request.requestId,request);
+ assert.equal(parse(['environment','prepare','--name','Browser','--source','npm:@playwright/mcp@0.0.83','--preview']).request.command.input.preview,true);
+ assert.throws(()=>parse(['environment','prepare','env','--name','Browser','--source','npm:@playwright/mcp@0.0.83','--expect-revision','rev']),/complete components/);
+ assert.throws(()=>parse(['environment','validate','env']),/revision/);
+ for(const name of ['environment.prepare','environment.validate','operation.continue','operation.cancel']){
+  const entry=helpEntries[name],invoked=parse([...name.split('.'),...entry.args],entry.input);assert(invoked.request.requestId);
+  const guidance=view([...name.split('.'),'--help']),identity=guidance.clientInputs.find(field=>field.name==='--request-id');assert.equal(identity.required,false);assert.equal(identity.default,'generated UUID');assert.match(guidance.example.placeholders,/Omit --request-id/);assert.doesNotMatch(guidance.example.placeholders,/Choose a fresh request UUID/);
+ }
+ const continued=parse(['operation','continue',`environment:${request}`,'--input','-'],{expectedVersion:2,actionId:'node',resolution:{kind:'toolchain',tool:'node',path:'/opt/node/bin/node'}});
+ assert.deepEqual(continued.request.command.input.resolution,{kind:'toolchain',tool:'node',path:'/opt/node/bin/node'});
+ assert.throws(()=>parse(['operation','continue',`environment:${request}`,'--input','-'],{expectedVersion:2,actionId:'node',resolution:{kind:'toolchain',tool:'node',path:'node'}}),/absolute path/);
+ for(const intent of ['install tool','prepare tools'])assert.equal(view(['help','--search',intent]).commands[0].command,'environment prepare');
+});
+
+test('OAuth setup discovery leads to capability-owned setup and explicit parent continuation',()=>{
+ for(const query of ['oauth','connect account','account setup','google workspace'])assert.equal(view(['help','--search',query]).commands[0].command,'environment prepare');
+ const prepare=view(['environment','prepare','--help']);assert.match(prepare.constraints.join(' '),/one connectionId per protected resource/);assert.match(prepare.constraints.join(' '),/Environment → Capabilities/);
+ const details=view(['environment','prepare','--help','--details']).details.join(' ');assert.match(details,/Client configuration and secrets belong only in the owner form/);assert.match(details,/bare endpoint import is not authenticated/);assert.match(details,/registers only that component/);assert.match(details,/explicit continuation still finishes the parent environment/);assert.match(details,/exact base revision/);assert.match(details,/existing consumers stay pinned/);
+ const continuation=view(['operation','continue','--help','--details']).details.join(' ');assert.match(continuation,/authentication-complete only after.*account connections are established/);assert.match(continuation,/never carries tokens/);
 });
 
 test('search understands concrete intents, orders deterministically and pages complete matches',()=>{
@@ -111,7 +136,7 @@ test('compact help exposes reply routing, receipt expansion and creation default
  assert.match(send.constraints.join(' '),/Do not poll history or status/);
  assert.match(view(['worker','history','--help']).result,/inspection and troubleshooting/);
  assert.match(view(['worker','create','--help']).constraints.join(' '),/configured default, not the creator/);
- assert.match(view(['checkpoint','publish','--help']).constraints.join(' '),/do not advance ordinary Git HEAD or change the index/);
+ assert.match(view(['checkpoint','publish','--help']).constraints.join(' '),/shared index and advances the current branch/);
  for(const name of Object.keys(commands)){
   const command=view([...name.split('.'),'--help']);
   assert(command.clientInputs.some(field=>field.name==='--json'),name);

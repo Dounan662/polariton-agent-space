@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import {AccountBinding} from './account-contracts.ts';
+import {McpServerPlan} from '../../harness/mcp-contracts.ts';
+import {PreparationInput,PreparationResult,PreparationSummary,ContinueInput,ValidationInput,ValidationResult,StorageBinding,CancellationResult,Authentication,CapabilityCompleteInput,CapabilityAddInput,PackageInstallation} from './preparation-contracts.ts';
 import {Actor,type Actor as Caller} from '../caller.ts';
 
 export const Key = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,95}$/);
@@ -15,10 +18,12 @@ export const ContainerRuntimeConfig=z.discriminatedUnion('kind',[
   z.object({kind:z.literal('colima'),profile:Key.refine(value=>value!=='default','Use an explicitly provisioned dedicated profile, not the shared default')}).strict(),
 ]);
 export const RackConfig = z.object({
+  oauthCallbackPort:z.number().int().min(0).max(65535).default(4329),oauthTimeoutMs:Positive.default(30000),oauthLoginTimeoutMs:Positive.default(600000),oauthRefreshSkewMs:z.number().int().nonnegative().default(30000),maxAccounts:Positive.default(128),maxAccountBytes:Positive.default(1048576),maxOAuthResponseBytes:Positive.default(1048576),
+  preparedContainerCapacity:Positive.default(2),
   runtime:ContainerRuntimeConfig.default({kind:'external'}),runtimeStartupTimeoutMs:Positive.default(180000),
-  packageTools:z.object({npm:AbsolutePath.optional(),node:AbsolutePath.optional(),uv:AbsolutePath.optional(),python:AbsolutePath.optional()}).strict().default({}),
+  packageTools:z.object({npm:AbsolutePath.optional(),node:AbsolutePath.optional(),uv:AbsolutePath.optional(),python:AbsolutePath.optional(),dotnet:AbsolutePath.optional(),cargo:AbsolutePath.optional(),rustc:AbsolutePath.optional()}).strict().default({}),
   packageRegistry:PackageRegistry.default('https://registry.npmjs.org'),packageIndexUrl:PackageRegistry.default('https://pypi.org/simple'),
-  packageTimeoutMs:Positive.default(300000),packageKillGraceMs:Positive.default(15000),maxPackageBytes:Positive.default(1073741824),maxPackageEntries:Positive.default(100000),maxPackageConcurrent:Positive.default(1),
+  packageTimeoutMs:Positive.default(300000),packageKillGraceMs:Positive.default(15000),maxPackageBytes:Positive.default(1073741824),maxPackageEntries:Positive.default(100000),maxPackageConcurrent:Positive.default(1),packageBuildJobs:Positive.default(2),maxPackageRedirects:Positive.default(5),
   catalogSources:z.record(Key,z.string().min(1)).default({}),
   stateRoot: z.string(), socketPath: z.string(), credentialFile:z.string().optional(), executablePaths:z.array(z.string()).default(['/usr/local/bin','/usr/bin','/bin']), maxCapabilities:Positive.default(1024), maxImportEntries:Positive.default(64), maxIdentityBytes:Positive.default(268435456), dockerConfig:z.string().optional(), dockerSocket:z.string().min(1).optional(), dockerContext: z.string().default('colima-polariton'),
   startupTimeoutMs: Positive.default(60000), shutdownTimeoutMs: Positive.default(15000),
@@ -59,16 +64,23 @@ export type ConnectionComponent=z.infer<typeof ConnectionComponent>;
 export const CredentialIdentity=z.object({account:Key,authority:Key}).strict();
 export const FileIdentity=z.object({path:z.string().min(1),realpath:z.string().min(1),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 export const Requirements=z.object({
+  storage:StorageBinding.optional(),
   files:z.array(z.string().min(1)).default([]),
   identityFiles:z.array(z.string().min(1)).default([]),
   execution:z.literal('foreground-host').default('foreground-host'),
 }).strict();
 const DefinitionBase={credentials:z.record(Key,CredentialIdentity),requirements:Requirements};
-export const HttpDefinition=z.object({...DefinitionBase,kind:z.literal('http'),url:z.string().url(),headers:z.record(z.string(),z.string())}).strict();
+export const HttpDefinition=z.object({...DefinitionBase,kind:z.literal('http'),account:AccountBinding.optional(),url:z.string().url(),headers:z.record(z.string(),z.string())}).strict();
 /** A package request is resolved once at Apply; activation consumes its retained installation. */
-export const PackageRequest=z.object({manager:z.enum(['npm','uv']),specifier:z.string().min(1),executable:z.string().min(1)}).strict();
+export const PackageAsset=z.object({kind:z.literal('playwright-browser'),browser:z.enum(['chromium','firefox','webkit'])}).strict();
+export const PackageRequest=z.discriminatedUnion('manager',[
+  z.object({manager:z.literal('npm'),specifier:z.string().regex(/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:@[a-zA-Z0-9*^~.+_-]+)?$/),executable:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),assets:z.array(PackageAsset).optional()}).strict(),
+  z.object({manager:z.literal('uv'),specifier:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*(?:==[a-zA-Z0-9][a-zA-Z0-9.+_-]*)?$/),executable:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),assets:z.array(PackageAsset).optional()}).strict(),
+  z.object({manager:z.enum(['nuget','cargo']),identifier:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),version:z.string().regex(/^\d[0-9A-Za-z.+_-]*$/),executable:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/).optional(),nativeBuild:z.boolean().optional()}).strict(),
+  z.object({manager:z.literal('mcpb'),url:PackageRegistry,sha256:z.string().regex(/^[a-f0-9]{64}$/),configuration:z.record(z.string(),z.union([z.string(),z.array(z.string())]))}).strict(),
+]);
 export type PackageRequest=z.infer<typeof PackageRequest>;
-export const StdioDefinition=z.object({...DefinitionBase,kind:z.literal('stdio'),command:z.string(),args:z.array(z.string()),env:z.record(z.string(),z.string()),package:PackageRequest.optional(),identity:z.object({platform:z.string(),arch:z.string(),files:z.array(FileIdentity).min(1)}).strict()}).strict();
+export const StdioDefinition=z.object({...DefinitionBase,kind:z.literal('stdio'),command:z.string(),args:z.array(z.string()),env:z.record(z.string(),z.string()),container:z.object({image:z.string().regex(/^[^\s]+@sha256:[a-f0-9]{64}$/)}).strict().optional(),package:PackageRequest.optional(),identity:z.object({platform:z.string(),arch:z.string(),files:z.array(FileIdentity).min(1)}).strict().optional()}).strict();
 export const ConnectionDefinition=z.discriminatedUnion('kind',[HttpDefinition,StdioDefinition]);
 export type ConnectionDefinition=z.infer<typeof ConnectionDefinition>;
 export const OfficialOrigin=z.object({kind:z.literal('official'),catalogVersion:Key,entryId:Key,version:Key,digest:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
@@ -103,8 +115,6 @@ export type ImportPreview=z.infer<typeof ImportPreview>;
 export const ImportResult=z.object({capabilities:z.array(ConnectionRevision)}).strict();
 export const Preparation=z.enum(['running','ready-to-connect','ready-to-launch','unavailable']);
 /** Public preparation provenance excludes filesystem paths, credentials and launch authority. */
-export const PackageInstallation=z.object({digest:z.string().regex(/^[a-f0-9]{64}$/),platform:z.string(),arch:z.string(),packages:z.array(z.object({name:z.string(),version:z.string()}).strict())}).strict();
-export type PackageInstallation=z.infer<typeof PackageInstallation>;
 export const ComponentOutcome=z.object({componentId:Key,mountId:Key.nullable(),resource:z.string().nullable(),error:z.string().nullable(),errorCode:z.string().optional(),readiness:Preparation,installation:PackageInstallation.optional()});
 export const EnvironmentDocument = z.object({
   format:z.literal(2), environmentId:Key, name:z.string().min(1), description:z.string(),
@@ -124,8 +134,7 @@ export const AccessRecord = z.object({id:Key,owner:Key,request:AccessRequest.nul
 export type AccessRecord = z.infer<typeof AccessRecord>;
 export const EnvironmentChoice = z.object({environment:EnvironmentRef,observedAt:z.string()}).strict();
 export type EnvironmentChoice = z.infer<typeof EnvironmentChoice>;
-const NameValue=z.object({name:z.string(),value:z.string()}).strict();
-export const McpServer = z.union([z.object({type:z.literal('http'),name:Key,url:z.string().url(),headers:z.array(NameValue)}).strict(),z.object({name:Key,command:z.string(),args:z.array(z.string()),env:z.array(NameValue)}).strict()]);
+export const McpServer=McpServerPlan;
 export const ComponentAccess=z.object({componentId:Key,serverName:Key,status:z.enum(['ready','unavailable']),code:z.enum(['PREPARATION_UNAVAILABLE','CONNECTION_UNAVAILABLE','MOUNT_UNAVAILABLE','RESOURCE_BUSY','GRANT_UNAVAILABLE','RUNTIME_UNAVAILABLE']).nullable()}).strict();
 export type ComponentAccess=z.infer<typeof ComponentAccess>;
 export const AccessGrant = z.object({id:Key,servers:z.array(McpServer),components:z.array(ComponentAccess)}).strict();
@@ -135,10 +144,17 @@ export interface EnvironmentAccess { choices():Promise<EnvironmentChoice[]>; acq
 export const EnvironmentHead = z.object({revisionId:Key,removed:z.object({operationId:Key,removedAt:z.string()}).strict().optional()}).strict();
 export type EnvironmentHead = z.infer<typeof EnvironmentHead>;
 export const Command = z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('environment.prepare'),operationId:Key,input:PreparationInput}).strict(),
+  z.object({kind:z.literal('environment.validate'),operationId:Key,input:ValidationInput}).strict(),
+  z.object({kind:z.literal('operation.continue'),operationId:Key,input:ContinueInput}).strict(),
+  z.object({kind:z.literal('operation.cancel'),operationId:Key,input:z.object({target:z.string().regex(/^environment:[a-zA-Z0-9_.-]+$/)}).strict()}).strict(),
   z.object({kind:z.literal('catalog.provision'),operationId:Key,entryId:Key,version:Key,install:z.boolean().default(false)}).strict(),
   z.object({kind:z.literal('capability.register'),operationId:Key,id:Key.optional(),repository:z.string().min(1)}).strict(),
   z.object({kind:z.literal('capability.import'),operationId:Key,entries:z.array(ImportEntry).min(1)}).strict(),
   z.object({kind:z.literal('capability.revise'),operationId:Key,id:Key,expectedBase:Key,entry:ImportEntry}).strict(),
+  z.object({kind:z.literal('capability.add'),operationId:Key,input:CapabilityAddInput}).strict(),
+  z.object({kind:z.literal('capability.complete'),operationId:Key,input:CapabilityCompleteInput}).strict(),
+  z.object({kind:z.literal('capability.authenticate'),operationId:Key,id:Key,expectedBase:Key,authentication:Authentication}).strict(),
   z.object({kind:z.literal('release.install'),operationId:Key,packageId:Key,commit:z.string().regex(/^[a-f0-9]{40}$/)}).strict(),
   z.object({kind:z.literal('environment.publish'),operationId:Key,expectedBase:Key.nullable(),document:EnvironmentDocument}).strict(),
   z.object({kind:z.literal('environment.remove'),operationId:Key,environmentId:Key,expectedBase:Key}).strict(),
@@ -159,7 +175,7 @@ export interface Connection {bindingId:string;mountId:string;releaseId:string;ge
 export interface Realization {id:string;environmentId:string;revisionId:string;status:'applying'|'ready'|'partial';components:Array<z.infer<typeof ComponentOutcome>>;createdAt:string}
 export interface Observation {mountId:string;generation:string;releaseId:string;source:string;observedAt:string;stale:boolean;available:boolean;error:string|null;tools:unknown[];resources:unknown[];value?:unknown}
 export interface Operation {actor:Caller;attempts:Array<{at:string;state:string;error:string|null;errorCode?:string}>;id:string;command:Command;state:'running'|'waiting'|'succeeded'|'failed';result:unknown;error:string|null;errorCode?:string}
-export interface Inventory {capabilities:Capability[];releases:Release[];environments:Array<{id:string;head:Revision}>;mounts:Mount[];realizations:Realization[];activeRealizations:Record<string,string>;operations:Operation[];observations:Observation[];bindings:Array<Omit<Binding,'hash'|'accessId'>>}
+export interface Inventory {capabilities:Capability[];releases:Release[];environments:Array<{id:string;head:Revision}>;preparations:PreparationSummary[];mounts:Mount[];realizations:Realization[];activeRealizations:Record<string,string>;operations:Operation[];observations:Observation[];bindings:Array<Omit<Binding,'hash'|'accessId'>>}
 export class RackFault extends Error {code:string;status:number;constructor(code:string,message:string,status=409){super(message);this.code=code;this.status=status;}}
 
 // Persisted operational records are validated at the storage boundary, independently of callers.
@@ -183,9 +199,16 @@ export type Provenance=z.infer<typeof Provenance>;
  * receipts expose status only; callers inspect the corresponding resource for results.
  */
 export const BrowserResults={
+  'environment.prepare':PreparationResult,
+  'environment.validate':ValidationResult,
+  'operation.continue':PreparationResult,
+  'operation.cancel':CancellationResult,
   'capability.register':ManagedCapability,
   'capability.import':ImportResult,
   'capability.revise':ConnectionRevision,
+  'capability.add':PreparationResult,
+  'capability.complete':PreparationResult,
+  'capability.authenticate':ConnectionRevision,
   'release.install':ReleaseRecord,
   'environment.publish':Revision,
   'environment.remove':z.object({environmentId:Key,operationId:Key,removedAt:z.string()}),
@@ -197,6 +220,7 @@ export const BrowserResults={
 } satisfies Partial<Record<Command['kind'],z.ZodType>>;
 export const BrowserInventory=z.object({
   capabilities:z.array(Capability),releases:z.array(ReleaseRecord),
+  preparations:z.array(PreparationSummary),
   environments:z.array(z.object({id:Key,head:Revision})),mounts:z.array(MountRecord),
   realizations:z.array(RealizationRecord),activeRealizations:z.record(z.string(),z.string()),
   operations:z.array(z.object({id:Key,command:Command,state:z.enum(['running','waiting','succeeded','failed']),error:z.string().nullable()}).transform(value=>({...value,result:null}))),

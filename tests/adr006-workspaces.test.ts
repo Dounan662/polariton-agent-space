@@ -1,8 +1,12 @@
 import {owner} from '../src/caller.ts';
+import {execFileSync} from 'node:child_process';
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
 import { mkdir, readFile, writeFile, rm, rename, cp, symlink, stat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const execute = promisify(execFile);
 import { temporaryDirectory } from './fixtures/storage.ts';
 import { createHash } from 'node:crypto';
 import { ResearchTree } from '../src/research.ts';
@@ -19,14 +23,14 @@ async function fixture(t: TestContext, overrides: Partial<Config> = {}) {
   const state = join(root, 'state'); await mkdir(state);
   const config = { ...await loadConfig(), ...overrides, stateRoot: state, verification: false };
   let tree = new ResearchTree(config); await tree.initialize();
-  t.after(async () => { tree.close(); await rm(root, { recursive: true, force: true }); });
+  t.after(async () => { await tree.close(); await rm(root, { recursive: true, force: true }); });
   let sequence = 0;
   const id = () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`;
   return {
     root, state, config, id, get tree() { return tree; },
-    async reopen() { tree.close(); tree = new ResearchTree(config); await tree.initialize(); },
+    async reopen() { await tree.close(); tree = new ResearchTree(config); await tree.initialize(); },
     async stopped(work: () => Promise<void>) {
-      tree.close();
+      await tree.close();
       try { await work(); } finally { tree = new ResearchTree(config); await tree.initialize(); }
     },
     async node(project: string) {
@@ -99,14 +103,14 @@ test('a copied registry remains historical and cannot take ownership after the o
     assert.equal(other.projects()[0]?.availability, 'historical'); assert.match(other.projects()[0]?.detail ?? '', /historical/i);
     await assert.rejects(other.mutate(project.id, { operationId: f.id(), revision: graph.revision,
       command: { kind: 'node.edit', id: node, title: 'Forbidden second writer', description: '' } }), fault('WORKSPACE_RELOCATED'));
-    other.close(); other = null;
+    await other.close(); other = null;
     await f.stopped(async () => {
       other = new ResearchTree(otherConfig); await other.initialize();
       assert.equal(other.projects()[0]?.availability, 'historical'); assert.deepEqual(other.graph(project.id), graph);
       assert.throws(() => other!.workspace(project.id, node, 'write'), fault('WORKSPACE_RELOCATED'));
-      other.close(); other = null;
+      await other.close(); other = null;
     });
-  } finally { other?.close(); }
+  } finally { await other?.close(); }
   assert.equal(f.tree.projects()[0]?.availability, 'available');
 });
 
@@ -244,11 +248,12 @@ test('checkpoint and file publication exclude each other while staging and works
   const upload = f.upload('published.txt', 'published bytes'); await f.tree.stageUpload(project.id, node, upload.input, upload.bytes);
   const checkpointPending = f.tree.checkpoint(project.id, node, f.id(), {publisher:owner});
   await assert.rejects(f.tree.publishUpload(project.id, node, upload.input), fault('CHECKPOINT_BUSY'));
-  const before = await checkpointPending; assert.deepEqual(before.files, [], 'staged bytes belong to no workspace checkpoint');
+  const before = await checkpointPending;
+  assert.equal(execFileSync('git',['-C',f.tree.workspace(project.id,node),'ls-tree','--name-only',before.commit],{encoding:'utf8'}),'','staged upload bytes belong to no workspace checkpoint');
   const publishing = f.tree.publishUpload(project.id, node, upload.input);
   await assert.rejects(f.tree.checkpoint(project.id, node, f.id(), {publisher:owner}), fault('CHECKPOINT_BUSY'));
   await publishing;
   const checkpoint = f.tree.checkpoint(project.id, node, f.id(), {publisher:owner});
   assert.equal(f.tree.workspace(project.id, node, 'write'), f.tree.workspace(project.id, node));
-  assert.deepEqual((await checkpoint).files, ['published.txt']);
+  assert.equal(execFileSync('git',['-C',f.tree.workspace(project.id,node),'show',`${(await checkpoint).commit}:published.txt`],{encoding:'utf8'}),'published bytes');
 });

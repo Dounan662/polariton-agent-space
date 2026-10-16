@@ -20,8 +20,10 @@ Do not publish exploit details, tokens, or user data in a public issue.
   Public internet exposure and multi-user hosting are outside this preview.
 - Agent tools can act with the user's granted access. Trusted host programs and
   same-user processes are not isolated from that user's files or credentials.
-- Provider keys are stored locally as plaintext with owner-only POSIX permissions.
-  These permissions do not protect keys from processes running as that owner.
+- Provider keys and capability account secrets are stored locally as plaintext with
+  owner-only POSIX permissions. These permissions do not protect secrets from
+  processes running as that owner. Local account disconnect does not guarantee
+  upstream token revocation; restart workers holding copied static credentials.
 - Managed containers and external MCP servers have distinct trust boundaries.
   Review [capability operations](docs/ENVIRONMENT.md) before granting access.
 - Backups can contain keys, histories, attachments, and research data. Keep them

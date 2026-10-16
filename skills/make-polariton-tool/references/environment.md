@@ -1,5 +1,8 @@
 # Environment composition and recovery
 
+This is the expert definition-only composition and lifecycle path. For ordinary tool
+setup use [prepare, inspect and validate](preparation.md), one durable owner operation.
+
 Use `harnessctl` with the installation context from SKILL.md. Discover current
 records and retain exact IDs; names are display metadata.
 

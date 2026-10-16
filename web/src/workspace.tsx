@@ -106,6 +106,16 @@ function WorkspaceActions({base,onReload,onChanged,children}:{base:string;onRelo
  const pending=useRef<{file:File;operation?:UploadPublication}|null>(null),checkpoint=useRef<string|null>(null);
  const [action,setAction]=useState<'upload'|'checkpoint'|null>(null),[progress,setProgress]=useState(0);
  const [error,setError]=useState<{message:string;action:'upload'|'checkpoint';conflict:boolean}|null>(null);
+ const [openingFolder,setOpeningFolder]=useState(false),[folderError,setFolderError]=useState('');
+ const folderRequest=useRef<AbortController|null>(null);
+ useEffect(()=>()=>folderRequest.current?.abort(),[]);
+ async function openFolder(){
+  if(folderRequest.current)return;
+  const controller=new AbortController();folderRequest.current=controller;setOpeningFolder(true);setFolderError('');
+  try{await api(`${base}/open-folder`,{},controller.signal);}
+  catch(error){if(!controller.signal.aborted)setFolderError(error instanceof Error?error.message:String(error));}
+  finally{if(!controller.signal.aborted)setOpeningFolder(false);folderRequest.current=null;}
+ }
  const {policy}=useContext(WorkspaceContext);
  async function publishFile(selected?:File,replace=false) {
   if(locked.current)return;
@@ -137,6 +147,7 @@ function WorkspaceActions({base,onReload,onChanged,children}:{base:string;onRelo
  }
  return <>
   <div className="section-label workspace-heading"><span>WORKSPACE FILES</span><div className="workspace-actions">
+   <WorkspaceAction label={openingFolder?'Opening workspace folder…':'Open workspace folder in system file manager'} disabled={openingFolder} onClick={()=>void openFolder()}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M14 7V4H8L6 2H2v11h5m3-6h4v4m0-4-5 5"/></svg></WorkspaceAction>
    <WorkspaceAction label="Refresh workspace files" onClick={onReload}><IconRefreshOutline16/></WorkspaceAction>
    <WorkspaceAction label={action==='upload'?`Uploading file (${Math.round(progress*100)}%)`:'Upload file'} disabled={action!==null} onClick={()=>input.current?.click()}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M8 10V2m-3 3 3-3 3 3M3 10v3h10v-3"/></svg></WorkspaceAction>
    <WorkspaceAction label={action==='checkpoint'?'Publishing checkpoint…':'Publish checkpoint'} disabled={action!==null} onClick={()=>void publishCheckpoint()}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M1.5 8h3m7 0h3"/><circle cx="8" cy="8" r="3.5"/></svg></WorkspaceAction>
@@ -145,6 +156,7 @@ function WorkspaceActions({base,onReload,onChanged,children}:{base:string;onRelo
   <input ref={input} hidden type="file" aria-label="Upload workspace file" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void publishFile(file);}}/>
   {action&&<p className="workspace-action-status" role="status">{action==='upload'?`Uploading ${pending.current?.file.name} · ${Math.round(progress*100)}%`:'Publishing checkpoint…'}</p>}
   {error&&<div className="workspace-action-status" role="alert"><span>{error.conflict?`“${pending.current?.file.name}” already exists or has changed.`:error.message}</span>{error.conflict?<button disabled={action!==null} onClick={()=>void publishFile(undefined,true)}>Replace existing file</button>:<button disabled={action!==null} onClick={()=>void(error.action==='upload'?publishFile():publishCheckpoint())}>Retry</button>}</div>}
+  {folderError&&<p className="workspace-action-status" role="alert">{folderError}</p>}
   {children}
   </div>
  </>;
@@ -184,7 +196,7 @@ export function WorkspacePanel({maxPdfPages,maxPdfPixels,maxTabs,maxExpanded,bas
     {checkpoints.map(checkpoint=><div className="checkpoint" key={checkpoint.id}>
      <details className="checkpoint-description">
       <summary><IconChevronRightOutline14/><time dateTime={new Date(checkpoint.createdAt).toISOString()}>{new Date(checkpoint.createdAt).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</time><CheckpointMessage text={checkpoint.note?.trim()||'No checkpoint message'}/></summary>
-      <div className="checkpoint-detail"><span>{checkpoint.files.length} files</span><time dateTime={new Date(checkpoint.createdAt).toISOString()}>{new Date(checkpoint.createdAt).toLocaleString()}</time><span>Published by {checkpoint.publisher.kind==='owner'?'you':`worker ${checkpoint.publisher.id}`}</span>{checkpoint.note&&<p>{checkpoint.note}</p>}<code>{checkpoint.commit}</code></div>
+      <div className="checkpoint-detail"><time dateTime={new Date(checkpoint.createdAt).toISOString()}>{new Date(checkpoint.createdAt).toLocaleString()}</time><span>Published by {checkpoint.publisher.kind==='owner'?'you':`worker ${checkpoint.publisher.id}`}</span>{checkpoint.note&&<p>{checkpoint.note}</p>}<code>{checkpoint.commit}</code></div>
      </details>
      <WorkspaceAction label="Create node from checkpoint" onClick={()=>onContinue(checkpoint.id)}><IconBranchOutline16/></WorkspaceAction>
     </div>)}

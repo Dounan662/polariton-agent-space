@@ -31,7 +31,7 @@ export async function apply(ctx) {
     resolve:()=>({DSH_HARNESSCTL_TOKEN:process.env.HARNESSCTL_TOKEN}),
   });
   const messages=new NativeMessages(ctx);
-  const mcp=new McpAdmission(ctx,{startupMs:Number(process.env.POLARITON_MCP_STARTUP_MS),cleanupMs:Number(process.env.POLARITON_MCP_CLEANUP_MS)});
+  const mcp=new McpAdmission(ctx,{startupMs:Number(process.env.POLARITON_MCP_STARTUP_MS),cleanupMs:Number(process.env.POLARITON_MCP_CLEANUP_MS),callMs:Number(process.env.POLARITON_REQUEST_TIMEOUT_MS),credentialMs:Number(process.env.POLARITON_REQUEST_TIMEOUT_MS),maxCredentialBytes:Number(process.env.POLARITON_MAX_FRAME_BYTES)});
   /** A reminder producer belongs to a fully activated session, never discovery. */
   /** @type {ReturnType<import('@deepseek-ai/cordis').Context['plugin']>|undefined} */
   let schedule;

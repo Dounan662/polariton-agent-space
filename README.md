@@ -12,8 +12,9 @@ experimental versions is not supported. Packaged releases will be handled separa
 - Organize research as an editable graph of nodes and descriptive relationships.
 - Run independent workers that share a node's files while keeping separate context.
 - Inspect conversations, tool activity, and saved execution history.
-- Publish Git checkpoints and continue research from a selected checkpoint.
-- Connect model providers and prepared MCP capabilities.
+- Publish checkpoints in shared Git history and continue from a retained commit.
+- Connect model providers; prepare package, container and external MCP capabilities.
+- Inspect preparation, resolve account setup, and validate tools before assigning them.
 
 Polariton uses DeepSeek Harness (DSH) for model execution, tools, context, and history.
 The application owns research records, worker control, and capability infrastructure.
@@ -96,9 +97,11 @@ account access to `/var/run/docker.sock`.
 
 ## Platforms and data
 
-Repository builds and tests have passed on macOS arm64 with Node **24.11.0**
-and Ubuntu 26.04 amd64 with Node **24.21.0**. Ubuntu 24.04 is implemented but
-not fully qualified; Windows and Intel Macs are not supported.
+The baseline was verified on macOS arm64 with Node **24.11.0** and Ubuntu 26.04
+amd64 with Node **24.21.0**. The latest capability preparation and shared Git
+checkpoint upgrades were qualified on macOS; they have not been requalified on
+Ubuntu. Ubuntu 24.04 is implemented but not fully qualified; Windows and Intel
+Macs are not supported.
 See [compatibility and verification scope](docs/COMPATIBILITY.md) for what was checked on this copy.
 
 Persistent data lives outside the repository:

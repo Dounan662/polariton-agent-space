@@ -22,7 +22,7 @@ test('interrupted initial-worker creation recovers through ordinary creation and
   };
   const factory=()=>{throw new Error('Provisioning must not launch a harness');};
   let agents=new AgentManager(config,tree,async()=>false,factory,{providers});
-  t.after(async()=>{await agents.close();tree.close();await rm(root,{recursive:true,force:true});});
+  t.after(async()=>{await agents.close();await tree.close();await rm(root,{recursive:true,force:true});});
   const project=await tree.createProject(randomUUID(),'Uniform workers'),node=await tree.ensureMain(project.id);
   assert.throws(()=>agents.ensureInitialWorker(project.id,node),/Provider settings temporarily unavailable/);
   assert.equal(agents.initialWorkerId(project.id),null);

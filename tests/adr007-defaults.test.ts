@@ -15,8 +15,8 @@ async function fixture(t:TestContext){
  const config={...await testConfig(root),stateRoot:root,verification:false};
  let tree=new ResearchTree(config);await tree.initialize();
  let starts=0;let agents=new AgentManager(config,tree,async()=>{throw new Error('Provisioning spent budget');},()=>{starts++;throw new Error('Provisioning launched harness');});
- t.after(async()=>{await agents.close();tree.close();await rm(root,{recursive:true,force:true});});
- return {root,config,get tree(){return tree;},get agents(){return agents;},get starts(){return starts;},async restart(){await agents.close();tree.close();tree=new ResearchTree(config);await tree.initialize();agents=new AgentManager(config,tree,async()=>false,()=>{starts++;throw new Error('Restart launched harness');});}};
+ t.after(async()=>{await agents.close();await tree.close();await rm(root,{recursive:true,force:true});});
+ return {root,config,get tree(){return tree;},get agents(){return agents;},get starts(){return starts;},async restart(){await agents.close();await tree.close();tree=new ResearchTree(config);await tree.initialize();agents=new AgentManager(config,tree,async()=>false,()=>{starts++;throw new Error('Restart launched harness');});}};
 }
 
 test('default identities survive parallel retry, title collisions, rename, archive and restart without execution',async t=>{

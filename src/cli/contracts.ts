@@ -4,6 +4,7 @@ import {WorkerOverviewInput} from '../worker-overview-contracts.ts';
 import {resultSchema,responseSchemas} from './results.ts';
 import {Id,Text,Fault,WorkerInstructions} from '../contracts.ts';
 import {Key,EnvironmentDocument,ImportEntry,PreviewInput,ManagedComponent} from '../environment/contracts.ts';
+import {PreparationInput,ValidationInput,ContinueInput,Authentication,CapabilityCompleteInput,CapabilityAddInput} from '../environment/preparation-contracts.ts';
 const revision=z.number().int().nonnegative();
 const target={target:Id};
 const project={project:Id};
@@ -41,7 +42,7 @@ export const commands={
  'worker.history':entry(z.object({...target,cut:z.string().optional(),before:z.number().int().nonnegative().optional()}).strict(),false,'Read bounded persisted history without activating a worker.'),
  'worker.evidence':entry(z.object({...target,reference:z.string().min(1)}).strict(),false,'Retrieve retained evidence referenced by history; --output FILE writes exact bytes, never overwrite.'),
  'worker.respond':entry(z.object({...target,request:Id,option:z.string().min(1)}).strict(),true,'Answer an outstanding worker-scoped permission using an offered option.'),
- 'checkpoint.publish':entry(z.object({...node,note:Text.optional()}).strict(),true,'Retain shared workspace contents during active work; unfinished files are meaningful. Optional note describes progress.'),
+ 'checkpoint.publish':entry(z.object({...node,note:Text.optional()}).strict(),true,'Stage Git-included shared changes and retain a milestone on the current branch; unchanged publication registers HEAD. Optional note describes progress.'),
  'checkpoint.list':entry(z.object({...node,...page}).strict(),false,'List published checkpoints.'),
  'checkpoint.get':entry(z.object({...target,...node}).strict(),false,'Read retained commit, file set and publication identity.'),
  'catalog.list':entry(z.object(page).strict(),false,'Inspect distributed official versions and retained provisioning without preparation.'),
@@ -53,9 +54,15 @@ export const commands={
  'capability.preview':entry(PreviewInput,false,'Validate and normalize MCP configuration without execution.'),
  'capability.import':entry(z.object({entries:z.array(ImportEntry).min(1)}).strict(),true,'Register validated connection definitions without execution.'),
  'capability.revise':entry(z.object({target:Key,expectRevision:Key,entry:ImportEntry}).strict(),true,'Publish exact changed connection definition against current revision.'),
+ 'capability.add':entry(CapabilityAddInput,true,'Retain one capability source for setup in its own view; no environment is created and no installation runs.'),
+ 'capability.complete':entry(CapabilityCompleteInput,true,'Resolve and register one pending capability without publishing or applying its parent environment; owner authentication amendments are retained.'),
+ 'capability.authenticate':entry(z.object({target:Key,expectRevision:Key,authentication:Authentication}).strict(),true,'Owner-only authentication revision of one catalog capability; existing environments keep their exact revisions.'),
  'release.install':entry(z.object({target:Key,commit:z.string().regex(/^[a-f0-9]{40}$/)}).strict(),true,'Install managed release from exact Git commit; inspect receipt after disconnect.'),
  'release.get':entry(z.object({target:Key}).strict(),false,'Read managed release and retained build provenance.'),
  'environment.list':entry(z.object(page).strict(),false,'List published environments and applied state.'),
+ 'environment.prepare':entry(PreparationInput,true,'Create and prepare an environment from an exact source or complete specification; --preview assesses without effects.'),
+ 'environment.inspect':entry(z.object({target:Key,revision:Key.optional()}).strict(),false,'Inspect exact capability properties, preparation, authentication and retained validation evidence.'),
+ 'environment.validate':entry(ValidationInput,true,'Connect and discover through Harness without model inference; --check runs an explicitly declared functional check.'),
  'environment.get':entry(z.object({target:Key,revision:Key.optional()}).strict(),false,'Read head or exact retained environment revision.'),
  'environment.publish':entry(z.object({document:EnvironmentDocument,expectRevision:Key.nullable(),preview:z.boolean().default(false)}).strict(),true,'Publish or preview an environment document; null expected revision creates; publishing does not apply.'),
  'environment.apply':entry(z.object({target:Key,revision:Key}).strict(),true,'Prepare exact revision and retain each component outcome; partial is not ready.'),
@@ -71,11 +78,16 @@ export const commands={
  'binding.create':entry(z.object({mount:Key,principal:Key,access:z.enum(['observe','call'])}).strict(),true,'Create standalone connection; credentials require explicit --output FILE and never appear in ordinary output.'),
  'binding.release':entry(z.object({target:Key}).strict(),true,'Release a standalone binding without stopping shared infrastructure.'),
  'operation.get':entry(z.object({target:z.string().regex(/^(main:(research|worker)|environment|daemon:(main|environment)):[a-zA-Z0-9_.-]+$/)}).strict(),false,'Inspect owner command receipt and current result; --wait observes that command, never recipient turn completion.'),
+ 'operation.continue':entry(ContinueInput,true,'Resolve one pending preparation action against its expected operation version; original source and authority remain fixed.'),
+ 'operation.cancel':entry(z.object({target:ContinueInput.shape.target}).strict(),true,'Explicitly cancel preparation and retain process settlement or unresolved cleanup obligations.'),
  'daemon.status':entry(z.object({target:z.enum(['main','environment','all']).default('all')}).strict(),false,'Inspect selected installed peers without starting them.'),
  'daemon.start':entry(z.object({target:z.enum(['main','environment','all']).default('all'),detach:z.boolean().default(false)}).strict(),true,'Explicitly start selected peers, foreground by default; no browser is opened.'),
  'daemon.stop':entry(z.object({target:z.enum(['main','environment','all']).default('all')}).strict(),true,'Request peer shutdown and observe process settlement.'),
 } as const;
 export type CommandName=keyof typeof commands;
+/** Complete operations create their recovery identity at the client boundary and
+ * publish it before dispatch. Callers may always retain and supply their own. */
+export const automaticRequestId=(name:string)=>['worker.send','capability.add','capability.complete','environment.prepare','environment.validate','operation.continue','operation.cancel'].includes(name);
 export type Command={ [K in CommandName]:{kind:K;input:z.infer<typeof commands[K]['input']>} }[CommandName];
 export function parseCommand(kind:string,input:unknown):Command{
  if(!Object.hasOwn(commands,kind))throw new Fault('USAGE','Unknown command; use harnessctl help',400);
@@ -83,6 +95,6 @@ export function parseCommand(kind:string,input:unknown):Command{
 }
 export const Request=z.object({version:z.literal(1),requestId:Id.optional(),command:z.object({kind:z.string(),input:z.unknown()}).strict()}).strict().transform(value=>({...value,command:parseCommand(value.command.kind,value.command.input)})).superRefine((v,c)=>{if(isMutation(v.command)&&!v.requestId)c.addIssue({code:'custom',message:'Mutations require --request-id UUID retained before dispatch'});});
 export type Request=z.infer<typeof Request>;
-export function isMutation(command:Command){return commands[command.kind].mutation&&!(command.kind==='environment.publish'&&command.input.preview);}
-export function environmentCommand(name:string){return ['catalog','capability','release','environment','mount','binding'].includes(name.split('.')[0]!);}
-export function discovery(selection?:CommandName|CommandName[]){return {version:1,responses:responseSchemas(),grammar:'harnessctl <resource> <verb> [TARGET_ID] [--flags]',global:{json:'Explicit JSON output; domain execution already emits JSON',details:'Mutation and operation get: full retained owner receipt; with --help: expanded command guidance',config:'FILE',systemPromptFile:'worker create only: bounded literal UTF-8 file captured from caller cwd',input:'FILE|- (structured JSON only)',textStdin:'worker send only: --text-stdin reads literal UTF-8 text from stdin; cannot combine with text or --input -',requestId:'UUID; optional for worker send, required for other mutations. Preserve the original ID for recovery.',expectRevision:'Exact base; none means new environment',wait:'Wait for owner command outcome; worker send waits only for command admission, never message application or recipient turn completion',timeout:'Positive duration such as 30s or 2m',follow:'worker get only: bounded NDJSON observations',output:'Evidence, canvas PNG or binding credential file; exclusive creation',version:'Contract version 1'},commands:Object.fromEntries((selection?(Array.isArray(selection)?selection:[selection]):Object.keys(commands) as CommandName[]).map(key=>[key,{mutation:commands[key].mutation,description:commands[key].description,...((commands[key].mutation&&key!=='canvas.move')||key==='operation.get'?{presentation:{default:'responses.compactReceipt',details:'output',note:'output is the full owner receipt schema; previews return their ordinary result'}}:{}),input:z.toJSONSchema(commands[key].input,{io:'input'}),output:z.toJSONSchema(resultSchema(key))}]))};}
+export function isMutation(command:Command){return commands[command.kind].mutation&&!((command.kind==='environment.publish'||command.kind==='environment.prepare')&&command.input.preview);}
+export function environmentCommand(name:string){return name==='operation.continue'||name==='operation.cancel'||['catalog','capability','release','environment','mount','binding'].includes(name.split('.')[0]!);}
+export function discovery(selection?:CommandName|CommandName[]){return {version:1,responses:responseSchemas(),grammar:'harnessctl <resource> <verb> [TARGET_ID] [--flags]',global:{json:'Explicit JSON output; domain execution already emits JSON',details:'Mutation and operation get: full retained owner receipt; with --help: expanded command guidance',config:'FILE',systemPromptFile:'worker create only: bounded literal UTF-8 file captured from caller cwd',input:'FILE|- (structured JSON only)',textStdin:'worker send only: --text-stdin reads literal UTF-8 text from stdin; cannot combine with text or --input -',requestId:'UUID; generated for worker send, capability add/complete, environment prepare/validate and operation continue/cancel, required for other mutations. Preserve the original ID for recovery.',expectRevision:'Exact base; none means new environment',wait:'Wait for owner command outcome; worker send waits only for command admission, never message application or recipient turn completion',timeout:'Positive duration such as 30s or 2m',follow:'worker get only: bounded NDJSON observations',output:'Evidence, canvas PNG or binding credential file; exclusive creation',version:'Contract version 1'},commands:Object.fromEntries((selection?(Array.isArray(selection)?selection:[selection]):Object.keys(commands) as CommandName[]).map(key=>[key,{mutation:commands[key].mutation,description:commands[key].description,...((commands[key].mutation&&key!=='canvas.move')||key==='operation.get'?{presentation:{default:'responses.compactReceipt',details:'output',note:'output is the full owner receipt schema; previews return their ordinary result'}}:{}),input:z.toJSONSchema(commands[key].input,{io:'input'}),output:z.toJSONSchema(resultSchema(key))}]))};}

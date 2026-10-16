@@ -13,7 +13,7 @@ import {ControlledHarness} from './fixtures/harness.ts';
 const observedAt='2026-09-24T00:00:00Z';
 const choices=['first','second'].map(environmentId=>({environment:{environmentId,revisionId:'r1',name:environmentId},observedAt}));
 const revision={format:2,environmentId:'second',name:'second',description:'',components:[],revisionId:'r1',baseRevisionId:null,createdAt:observedAt,operationId:'publication'};
-const inventory=()=>({capabilities:[],releases:[],environments:[],mounts:[],realizations:[],activeRealizations:{},operations:[],observations:[],bindings:[]});
+const inventory=()=>({capabilities:[],releases:[],environments:[],preparations:[],mounts:[],realizations:[],activeRealizations:{},operations:[],observations:[],bindings:[]});
 
 /** A real authenticated Main HTTP boundary with an independently controlled local daemon. */
 async function browser(t:TestContext){
@@ -58,6 +58,19 @@ test('browser grant creation and release are denied before contacting Environmen
     const response=await b.request({method:'POST',url:'/api/environment/command',payload:command});assert.equal(response.statusCode,403);assert.equal(response.json().error.code,'GRANT_DENIED');
   }
   assert.deepEqual(b.calls,[]);
+});
+
+test('capability inspection forwards the selected revision and rejects untyped owner output',async t=>{
+  const b=await browser(t),path='/v1/capabilities/browser/inspection?revision=browser-v1';
+  const evidence={registered:true,dependencies:'ready',connection:'untested',tools:[],authentication:'not-required',checks:[],observedAt:null};
+  const inspection={capabilityId:'browser',revisionId:'browser-v1',component:{id:'browser',name:'Playwright Browser',source:{kind:'npm',identifier:'@playwright/mcp',version:'0.0.83'},runtime:{kind:'local'},connection:{kind:'stdio',args:[],env:{}},requirements:{files:[],identityFiles:[],assets:[{kind:'playwright-browser',browser:'chromium'}],nativeBuild:false},authentication:{kind:'none'},checks:[],catalogId:'browser',capabilityId:'browser',capabilityRevisionId:'browser-v1',evidence,error:null},environments:[]};
+  b.responses.set(path,inspection);
+  const response=await b.request({method:'GET',url:'/api/environment/capabilities/browser/inspection?revision=browser-v1'});
+  assert.equal(response.statusCode,200,response.body);assert.deepEqual(response.json(),inspection);
+  assert.deepEqual(b.calls,[path]);assert.equal(b.harnesses.length,0,'Reading capability facts cannot activate a worker');
+  b.responses.set(path,{...inspection,privateToken:'private-credential'});
+  const malformed=await b.request({method:'GET',url:'/api/environment/capabilities/browser/inspection?revision=browser-v1'});
+  assert.equal(malformed.statusCode,503);assert(!malformed.body.includes('private-credential'));
 });
 
 test('typed inventory, revision, provenance and command responses reject malformed secrets generically',async t=>{

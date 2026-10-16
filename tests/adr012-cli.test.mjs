@@ -73,9 +73,9 @@ async function fixture(t, {main = true, environment = false, receiptDetails = tr
   };
 }
 
-test('capture contention and failure remain distinct from observer timeouts', () => {
-  for (const code of ['CHECKPOINT_BUSY','WORKSPACE_CHANGED']) assert.equal(exitCode({state:'failed',error:{code}}),3);
-  for (const code of ['CAPTURE_TIMEOUT','CAPTURE_CANCELLED']) assert.equal(exitCode({state:'failed',error:{code}}),6);
+test('checkpoint contention and failure remain distinct from observer timeouts', () => {
+  for (const code of ['CHECKPOINT_BUSY','CHECKPOINT_STATE','CHECKPOINT_RECOVERY_CONFLICT']) assert.equal(exitCode({state:'failed',error:{code}}),3);
+  for (const code of ['CHECKPOINT_TIMEOUT','CHECKPOINT_CANCELLED','CHECKPOINT_GIT']) assert.equal(exitCode({state:'failed',error:{code}}),6);
   assert.equal(exitCode({error:{code:'OBSERVER_TIMEOUT'}}),8);
 });
 
@@ -276,6 +276,28 @@ test('generated recovery identity is observable before a lost response and accom
   assert.equal(result.error.operation, recovery.operation);
 });
 
+test('preparation mutations flush generated environment recovery identities before uncertain replies', {timeout: testDeadline(30000)}, async t => {
+ const f=await fixture(t,{main:false});
+ await mkdir(join(f.root,'rack'),{recursive:true});await writeFile(join(f.root,'rack','admin.json'),JSON.stringify({token:'test-owner'}));
+ let received,release;
+ const server=createServer(async(request,response)=>{const chunks=[];for await(const chunk of request)chunks.push(chunk);received.resolve(JSON.parse(Buffer.concat(chunks).toString()));await release.promise;response.end('incomplete owner response');});
+ await new Promise(resolve=>server.listen(join(f.root,'environment.sock'),resolve));
+ t.after(async()=>{release?.resolve();await new Promise(resolve=>server.close(resolve));});
+ for(const [args,input] of [
+  [['environment','prepare','--name','Tool','--source','npm:tool@1.0.0'],''],
+  [['environment','validate','env','--revision','rev'],''],
+  [['operation','continue','environment:original','--input','-'],JSON.stringify({expectedVersion:2,actionId:'retry',resolution:{kind:'retry'}})],
+  [['operation','cancel','environment:original'],''],
+ ]){
+  received=Promise.withResolvers();release=Promise.withResolvers();const diagnostic=Promise.withResolvers();
+  const child=f.spawnCli(args);let stderr='',stdout='';child.stdin.end(input);
+  child.stderr.on('data',chunk=>{stderr+=chunk;const line=stderr.split('\n').find(line=>line.startsWith('{')&&line.endsWith('}'));if(line)diagnostic.resolve(JSON.parse(line));});child.stdout.on('data',chunk=>stdout+=chunk);
+  const closed=new Promise(resolve=>child.once('close',resolve));t.after(()=>{if(child.exitCode===null)child.kill('SIGKILL');});
+  const [body,recovery]=await Promise.all([received.promise,diagnostic.promise]);assert.equal(stdout,'');assert.equal(recovery.requestId,body.request.requestId);assert.equal(recovery.operation,`environment:${body.request.requestId}`);release.resolve();assert.equal(await closed,7);assert.equal(JSON.parse(stdout).error.operation,recovery.operation);
+ }
+ assert.equal(exitCode({state:'waiting',result:{status:'blocked',actions:[{id:'login'}]}}),3,'Actionable blockers return promptly as a precondition outcome');
+});
+
 test('configured follow event bounds fail observably without cancelling the worker', {timeout: testDeadline(30000)}, async t => {
   const construction = Promise.withResolvers();
   const f = await fixture(t, {configOverrides: {maxObservationEvents: 1, cliPollMs: 20}, harnessFactory: (config, home, _workspace, _budget, permission) => {
@@ -418,7 +440,7 @@ test('active workers publish shared checkpoints with authenticated provenance an
     const harness=new ControlledHarness(`session-${basename(home)}`,permission,config.selectedModel?JSON.parse(config.selectedModel)[1]:config.model);
     if(config.workerIdentity)construction.resolve({harness,credential:config.workerCredential});return harness;
   }});
-  const project=(await f.cli(['project','create','--name','Cooperative checkpoint','--root',join(f.root,'research'),'--request-id',randomUUID()])).value.data.result;
+  const project=(await f.cli(['project','create','--name','Shared history checkpoint','--root',join(f.root,'research'),'--request-id',randomUUID()])).value.data.result;
   const worker=project.initialWorkerId;
   const sent=await f.cli(['worker','send',worker,'--text','Work remains unfinished','--request-id',randomUUID(),'--wait']);
   assert.equal(sent.code,0,sent.stdout);
@@ -437,10 +459,9 @@ test('active workers publish shared checkpoints with authenticated provenance an
   const checkpoint=result.value.data.result;
   assert.deepEqual(checkpoint.publisher,{kind:'worker',id:worker,processId:before.processId});
   assert.equal(checkpoint.note,'Partial analysis; tests pending');
-  assert.deepEqual(checkpoint.files,['unfinished.txt']);
-  assert.equal(checkpoint.capture.consistency,'cooperative-verified');
-  assert.equal(checkpoint.capture.policy,'regular-files-v1');
-  assert(checkpoint.capture.finishedAt>=checkpoint.capture.startedAt);
+  assert.equal('files' in checkpoint,false);assert.equal('capture' in checkpoint,false);
+  assert.equal(execFileSync('git',['-C',workspace,'show',`${checkpoint.commit}:unfinished.txt`],{encoding:'utf8'}),'unfinished work');
+  assert.equal(execFileSync('git',['-C',workspace,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),checkpoint.commit);
   assert.equal((await f.cli(['worker','get',worker])).value.data.state,'running');
   await writeFile(join(workspace,'unfinished.txt'),'later edits');
   assert.deepEqual((await f.cli(args,'',access)).value.data.result,checkpoint);

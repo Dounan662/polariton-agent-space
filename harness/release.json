@@ -1,7 +1,7 @@
 {
   "format": 1,
   "version": "5.0.0-preview.1",
-  "lockSha256": "5e028c25daed545dcf4b47af874bb18c59a56c2a99fb85fad71a022a311cab19",
+  "lockSha256": "f295c62bd0f4357fec1784c471711c42a34b07ede1ffff8e2289a697bd3e127f",
   "presentation": {
     "revision": "639ed015397290b3745d163aafe02ffee4aa3f84",
     "sha256": "4e68aa294b497e87ca6a89c58c01ee4d38eba63b4c6a0f64c664821dc1fbe6c0"
@@ -1664,6 +1664,10 @@
     "node_modules/tar": {
       "version": "7.5.22",
       "integrity": "sha512-MFO/QzvtAOmJbkhOaCTvbGcFN9L9b+JunIsDwaKljSOdcLMea3NJ1k9Usz/rjdfSXTq4dfzfeS7W4p4YOAAHeA=="
+    },
+    "node_modules/yauzl": {
+      "version": "3.4.0",
+      "integrity": "sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw=="
     },
     "node_modules/zod": {
       "version": "4.6.5",

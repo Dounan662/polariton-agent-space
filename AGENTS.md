@@ -15,8 +15,13 @@ self-contained: no imports, symlinks, or build inputs from private sibling proje
 - Graph relationships describe research rather than imposing scheduling or coordination.
 - Reading history must not activate an agent. Sending a message must not install
   environment infrastructure. Assignments retain exact capability revisions.
-- Checkpoint capture is cooperative. It must not block unrelated worker admission
-  or claim exclusive authorship of shared files.
+- Checkpoints use ordinary shared Git staging/history and exact retained references.
+  Publication consumes staging and may include unfinished shared edits. Coordinate
+  publishers and managed uploads per node without blocking worker admission; never
+  claim exclusive authorship, recreate private capture, or infer per-file attribution.
+- Environment owns preparation and account connections; Harness owns session processes
+  and direct MCP calls. Keep preparation, discovery and functional validation distinct.
+  Sending/resuming work never installs, applies or starts managed infrastructure.
 
 ## Implementation quality
 

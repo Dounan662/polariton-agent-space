@@ -11,6 +11,9 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.harness.json",
     "build": "npm run typecheck && node scripts/check-boundaries.mjs && node scripts/build-native.mjs && vite build --config vite.config.ts",
     "start": "node src/system.ts start",
+    "dev": "POLARITON_PROFILE=development node src/system.ts start",
+    "dev:stop": "POLARITON_PROFILE=development node src/system.ts stop",
+    "verify:storage": "node scripts/verify-storage.mjs",
     "test": "node scripts/test.mjs",
     "stop": "node src/system.ts stop",
     "start:main": "node src/main.ts",
@@ -20,10 +23,7 @@
     "harnessctl": "node bin/harnessctl",
     "verify:release": "node scripts/check-boundaries.mjs",
     "check:public": "node scripts/check-public.mjs",
-    "smoke": "node scripts/smoke.mjs",
-    "dev": "POLARITON_PROFILE=development node src/system.ts start",
-    "dev:stop": "POLARITON_PROFILE=development node src/system.ts stop",
-    "verify:storage": "node scripts/verify-storage.mjs"
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.4",
@@ -58,6 +58,7 @@
     "@deepseek-ai/dsh-spill-policy": "0.2.0-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.2.0-rc.2",
     "@deepseek-ai/dsh-subprocess-local": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
     "@deepseek-ai/dsh-time-context": "0.2.0-rc.2",
     "@deepseek-ai/dsh-token-meter": "0.2.0-rc.2",
     "@deepseek-ai/dsh-tool-todo": "0.2.0-rc.2",
@@ -100,6 +101,7 @@
     "sharp": "0.35.5",
     "shiki": "4.3.1",
     "tar": "7.5.22",
+    "yauzl": "3.4.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
@@ -116,7 +118,6 @@
     "@deepseek-ai/dsh-storage-json": "0.2.0-rc.2",
     "@deepseek-ai/dsh-subagent": "0.2.0-rc.2",
     "@deepseek-ai/dsh-subagent-spawn-in-process": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
     "@deepseek-ai/dsh-tool-bash": "0.2.0-rc.2",
     "@deepseek-ai/dsh-tool-fs": "0.2.0-rc.2",
     "@deepseek-ai/dsh-tool-fs-search": "0.2.0-rc.2",
@@ -133,6 +134,7 @@
     "@types/node": "22.20.3",
     "@types/react": "18.3.1",
     "@types/react-dom": "18.3.0",
+    "@types/yauzl": "3.4.0",
     "@vitejs/plugin-react": "6.1.1",
     "micromark-util-types": "2.0.2",
     "typescript": "7.0.2",

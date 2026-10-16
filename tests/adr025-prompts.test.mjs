@@ -76,6 +76,7 @@ for(const tools of [true,false])test(`Polariton leaves native sections, tools an
   const identity=JSON.parse(placement.slice(placement.indexOf('{')));
   assert.deepEqual(identity,{workerId:'worker-fixture',nodeId:'node-fixture',projectId:'project-fixture',workspace:'/workspace/{{literal}}'});
   assert(text.includes('harnessctl worker overview'));assert(text.includes('/workspace/{{literal}}'));assert(text.includes('Literal {{worker-specialization}}'));
+  assert(text.includes('capability page in Environment → Capabilities'));assert(text.includes('separate connection per protected resource'));assert(text.includes('Registration does not establish authentication or tool readiness'));
  }
 });
 

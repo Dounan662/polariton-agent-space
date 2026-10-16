@@ -1,45 +1,115 @@
 # Capabilities and environments
 
-A **capability** describes a tool source. An **environment** selects capability
-revisions and configuration for a worker. Ordinary conversation and built-in
-Harness tools work without a managed container environment.
+A **capability** describes a source, runtime, connection, requirements and
+authentication. An **environment** selects exact capability revisions and settings
+for a worker. Ordinary conversation and built-in Harness tools need no managed
+container environment. Sending or resuming work never installs infrastructure.
 
-## Supported tool sources
+## Prepare and validate tools
 
-| Source | What you provide | Preparation |
-| --- | --- | --- |
-| HTTP MCP server | Endpoint and any required credential references | Validate configuration; Harness connects when the worker starts |
-| Stdio MCP server | Installed foreground executable or supported package recipe | Resolve prerequisites and prepare packages during Apply |
-| Managed capability | Git repository with a capability manifest | Build a pinned commit and run it with container limits |
+Use the CLI's complete preparation operation for a package or endpoint:
 
-Review a tool's code, permissions, network access, and credentials before using
-it. Host programs run with the user's access; a managed container and a host
-program have different security boundaries. See [security](../SECURITY.md).
+```sh
+npm run harnessctl -- environment prepare --name Browser --source 'npm:@playwright/mcp@0.0.83' --preview
+npm run harnessctl -- environment prepare --name Browser --source 'npm:@playwright/mcp@0.0.83'
+npm run harnessctl -- environment inspect ENVIRONMENT_ID --revision REVISION_ID
+npm run harnessctl -- environment validate ENVIRONMENT_ID --revision REVISION_ID
+```
 
-## Add and use capabilities
+Replace the IDs with the returned environment and revision. Preview does not
+install, launch or reserve identities; unresolved remote selections remain explicit.
+Preparation retains exact sources, publishes the environment revision and prepares
+its dependencies. It can finish partial or blocked. Inspect each component.
 
-1. Open **Env → Capabilities → Add**. Choose **From repository** or **From MCP configuration**.
-2. Preview the configuration and resolve validation errors or executable choices.
-   Registration records the definition; it does not run or install the tool.
-3. Create an environment and select the desired capability revisions. Managed
-   capabilities need an installed release before they can be selected. Adding or
-   editing components publishes the new environment revision.
-4. Choose **Apply** to prepare that revision. Inspect each component's outcome;
-   partial readiness can leave some tools unavailable.
-5. Select the prepared environment before a worker's first message.
+Validation connects and discovers tools through Harness without creating a worker
+or making a model call. `--check NAME` runs an explicitly declared functional check
+with its declared effects and budget. Preparation is not connection evidence;
+discovery is not a functional pass; a functional pass is not continuous health.
+Select the prepared environment before the worker's first message. No preparation
+or validation operation automatically assigns an environment or creates a worker.
 
-Sending a task does not install or start container infrastructure. HTTP and stdio
-preparation does not require Docker. A prepared external component is ready for
-Harness to attempt connection; preparation alone does not prove the server works.
+| Source | Supported preparation contract |
+| --- | --- |
+| npm / PyPI | Exact packages with private reusable installations; npm hooks disabled, PyPI wheels only |
+| NuGet / Cargo | Explicit package versions and required SDK/compiler; Cargo needs native-build authority |
+| OCI image | Exact image selection; isolated prepared stdio instances, without network, host mounts, credential injection or persistent volumes |
+| MCP bundle | Integrity-checked MCPB manifest 0.3 with direct Node/Python/native entrypoints |
+| Git package | Exact committed subtree and declared build/test recipe |
+| Existing installation | Explicit executable and declared prerequisites; host drift requires revalidation |
+| HTTP MCP endpoint | External service reference; Polariton does not operate the remote service |
 
-Assignments retain exact revisions. Changing a definition does not silently update
-existing workers. For a failed connection to the same retained definition, correct
-the prerequisite or server, then close and resume the worker. Do not replay a task
-until you understand its previous outcome.
+Convenience prefixes are `npm:`, `pypi:`, `nuget:`, `cargo:` and `oci:`; HTTP URLs
+select external endpoints. Exact package versions are required. Bundles, installed
+commands, Git packages and mixed environments use `--input specification.json`.
+Use `environment prepare --help --schema` for the complete contract. Updating an
+existing environment requires its target ID, expected revision and complete component
+list; a stale revision conflicts rather than overwriting concurrent changes.
 
-## MCP configuration
+Review tool code, permissions, network access and credentials. Host programs and
+native builds use the owner's access, not an OS sandbox. Unsupported recipes return
+explicit blockers. See [security](../SECURITY.md) and [qualification](COMPATIBILITY.md).
 
-A simple existing endpoint can be previewed with:
+## Recover a blocked operation
+
+Preparation, continuation and validation generate request identities and print
+recovery information before dispatch. Keep complete stdout/stderr. After a timeout,
+inspect that operation instead of submitting a new installation:
+
+```sh
+npm run harnessctl -- operation get environment:REQUEST_ID --details
+npm run harnessctl -- operation continue environment:REQUEST_ID --input resolution.json
+npm run harnessctl -- operation cancel environment:REQUEST_ID
+```
+
+A resolution names the current `expectedVersion`, `actionId`, and the requested
+retry, toolchain path or completed owner authentication. Read executable help for
+the schema. Observation timeouts do not cancel work; cancellation must settle owned
+processes and resources. Uncertain effects require inspection before retry.
+
+## Capability pages and accounts
+
+Open **Environment → Capabilities** and select a pending or registered capability.
+Its full page owns account setup; an environment component's **Open capability**
+link leads there too. Pending components remain visible before account setup or
+environment publication and after reload.
+
+Save private account settings and explicitly connect the account. Browser login
+and consent require the owner's action; worker commands return a pending action.
+Never put tokens in capability JSON, CLI arguments or public examples. An OAuth
+connection is bound to one resource URL; different services need separate connection
+IDs even when they share a provider client registration.
+
+For a pending capability, **Save authentication setup** retains the reviewed account
+choice and **Finish setup** completes the component after login. Completing a
+component does not publish its parent environment or discard sibling components.
+Open the retained parent plan and choose **Continue environment preparation** to
+finish the full plan. A standalone capability draft prepares reusable dependencies
+without creating an environment.
+
+For a registered capability, **Save account binding** creates a new exact revision.
+Select that revision explicitly when composing an environment. Existing environment
+revisions and workers keep their previous references. Assignment, including
+**No environment**, stays fixed after activation. Repairing preparation of the same
+definition can be observed on fresh activation; changing a definition requires a
+new selected revision and worker.
+
+OAuth supports discovery, supported client registration, PKCE and scoped live
+refresh. Provider compatibility is bounded, not universal. Google Workspace endpoint
+forms select Google metadata and preregistered-client mode; enter client settings
+privately using the displayed callback URI. Real Google consent and authenticated
+Workspace calls still require owner setup and verification. Secrets use private
+POSIX files, not an OS keychain. Local disconnect does not claim upstream revocation;
+static credentials already copied into a process require worker restart.
+
+## Expert registration and composition
+
+Definition-only registration remains available. **Add** supports repository and MCP
+configuration entry paths; preview and registration do not install or run a tool.
+Compose exact capability revisions, then **Apply** the selected environment revision.
+Managed authored capabilities require an installed release. Editing components
+publishes a revision; it does not silently update existing assignments.
+
+A simple existing endpoint configuration is:
 
 ```json
 {
@@ -52,41 +122,43 @@ A simple existing endpoint can be previewed with:
 }
 ```
 
-Replace the example URL with your server's endpoint. Do not put credentials in
-public examples. For executable resolution, secret references, package recipes,
-and exact import formats, use the maintained [MCP registration reference](../skills/make-polariton-tool/references/mcp.md).
-The [environment reference](../skills/make-polariton-tool/references/environment.md)
-describes publication, Apply, and recovery. These references are also used by
-Polariton's tool-authoring skill.
+Replace the URL with your server's endpoint. A URL without an authentication declaration
+does not prove tool calls need no login. See the maintained
+[preparation reference](../skills/make-polariton-tool/references/preparation.md),
+[MCP import reference](../skills/make-polariton-tool/references/mcp.md), and
+[environment reference](../skills/make-polariton-tool/references/environment.md).
 
 ## Managed containers
 
-On macOS, managed capabilities use the dedicated Colima profile `polariton`.
-With Homebrew available, provision it before using managed capabilities:
+On macOS, provision the dedicated Colima profile `polariton` before container use:
 
 ```sh
 brew install colima docker
 colima start polariton --cpu 4 --memory 8 --disk 30 --runtime docker --vm-type vz
 ```
 
-The default socket is `~/.colima/polariton/docker.sock`. On Ubuntu, provision a
-local Docker Engine separately and deliberately grant your account access to
-`/var/run/docker.sock`. Rootless and remote Docker engines are outside the tested
-profile. Polariton does not install Docker or switch your global Docker context.
+The default socket is `~/.colima/polariton/docker.sock`. Explicit preparation can
+start an already provisioned configured profile and fill prepared capacity; access
+only claims available capacity. Sending work never starts the engine. Polariton
+does not install Docker, create the profile or switch the global Docker context.
 
-Managed builds use immutable source and image identities. Limits and persistent
-volumes belong to the capability and its environment; back up persistent volumes
-separately from Polariton's data. For new tools, use the
-[managed authoring reference](../skills/make-polariton-tool/references/managed.md)
-and [starter](../skills/make-polariton-tool/assets/managed/).
+On Ubuntu, provision a local Docker Engine and deliberately grant your account
+access to `/var/run/docker.sock`. Rootless/remote engines and the new generic OCI
+preparation path on Ubuntu are outside the qualified profile.
+
+Managed builds retain source and image identities. Authored Git containers use a
+separate server-grant boundary from generic OCI stdio instances. Back up persistent
+capability storage separately; removing a definition or releasing access does not
+silently delete its user data. For authored tools, use the
+[managed reference](../skills/make-polariton-tool/references/managed.md) and
+[starter](../skills/make-polariton-tool/assets/managed/).
 
 ## Inspect and troubleshoot
 
-Use the environment view to inspect preparation and component failures. Missing
-credentials, executables, prerequisites, or container resources should be corrected
-before another Apply. Connection failures can leave healthy tools usable; inspect
-the worker's per-component startup status rather than assuming all tools loaded.
+Inspect preparation, pending actions, and per-component validation/startup status.
+Healthy components and ordinary conversation remain available when other tools fail.
+Resolve missing credentials, executables or engine prerequisites through the retained
+operation. Do not replay a task until its prior outcome is understood.
 
-The bundled official catalog is currently empty. You can register your own
-capabilities. The [CLI](CLI.md) provides capability, environment, and catalog
-inspection without directly editing internal databases.
+The bundled official catalog is empty. Register capabilities you have reviewed.
+The [CLI](CLI.md) exposes inspection and recovery without editing internal databases.

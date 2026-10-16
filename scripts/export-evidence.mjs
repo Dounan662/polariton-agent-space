@@ -56,4 +56,4 @@ const result={status:'pass',checkedAt:new Date().toISOString(),provider:config.p
 await writeFile(join(destination,'acceptance.json'),scrub(result));
 for(const [source,name] of [['report.json','qualification.json'],['controls-report.json','qualification-controls.json'],['permission-report.json','qualification-permission.json']]){const original=JSON.parse(await readFile(join(sourceRoot,'.local/qualification/2026-09-15T21-13-50.430Z',source),'utf8'));if(source==='report.json'){delete original.requests;original.note='Removed unused report.requests=0 field; budget.requests is the actual durable shared count.';}await writeFile(join(destination,name),scrub(original));}
 console.log(JSON.stringify({status:result.status,budget:result.budget,events:result.sourceCuts.map(c=>c.eventCount),files:sourceFiles}));
-agents.close();tree.close();budget.close();
+agents.close();await tree.close();budget.close();

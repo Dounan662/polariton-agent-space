@@ -101,5 +101,5 @@ test('abrupt Main activation crash releases only its journaled grants and never 
     assert.equal(acquired[1].owner,acquired[0].owner);assert.notEqual(acquired[1].id,acquired[0].id);
     assert.deepEqual(acquired[1].environment,acquired[0].environment);
     t.diagnostic(JSON.stringify({qualification:'activation-crash-recovery',workerId:ready.workerId,submissionId:ready.submissionId,cleanupCount:released.length,automaticPrompts:0,explicitRetryPrompts:prompts,providerRequests:0}));
-  }finally{await agents.close();tree.close();}
+  }finally{await agents.close();await tree.close();}
 });

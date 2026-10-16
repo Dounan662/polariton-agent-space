@@ -44,7 +44,7 @@ for(const lostGuardian of [false,true])test(`Main restart ${lostGuardian?'retain
   if(!lostGuardian)await delay(config.guardian.termTimeoutMs+config.guardian.killTimeoutMs);
   const tree=new ResearchTree(config);await tree.initialize();let launches=0;const harnesses:ControlledHarness[]=[];
   const agents=new AgentManager(config,tree,async()=>false,(settings,_home,_workspace,_budget,permission)=>{launches++;const h=new ControlledHarness(randomUUID(),permission,(settings.selectedModel?JSON.parse(settings.selectedModel)[1] as string:settings.model));harnesses.push(h);return h;},{catalog:{async choices(){return [];}}});
-  closeOwners=async()=>{for(const h of harnesses)h.complete();await agents.close().catch(()=>{});tree.close();};
+  closeOwners=async()=>{for(const h of harnesses)h.complete();await agents.close().catch(()=>{});await tree.close();};
   await agents.initialize();assert.equal(launches,0);
   const view=()=>agents.list(identity.project,identity.node).find(w=>w.id===identity.workerId)!;
   assert.equal(view().cleanupPending,lostGuardian);assert.equal(view().state,lostGuardian?'uncertain':'inactive');

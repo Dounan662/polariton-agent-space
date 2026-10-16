@@ -6,7 +6,7 @@ import {verifyRelease} from '../harness/release.ts';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const violations=[];
-const publicHarness=new Set(['contracts.ts','settings.ts','client.ts','history.ts','catalog.ts','release.ts','budget.mjs','providers.ts','provider-contracts.ts']);
+const publicHarness=new Set(['contracts.ts','settings.ts','client.ts','history.ts','catalog.ts','release.ts','budget.mjs','providers.ts','provider-contracts.ts','mcp-contracts.ts','mcp-validation.ts']);
 const publicPresenter=new Set(['presentation.ts','views.tsx']);
 const protocol=/(['"])(?:session\/(?:new|resume|list|set_config_option|request_permission)|activationReady|mcpPrepare|mcpClear|mcpStatus|mcpContext|residencyReserve|residencyCommit|residencyRelease)\1/;
 const walk=async directory=>{for(const entry of await readdir(directory,{withFileTypes:true})){
@@ -32,6 +32,11 @@ for(const entry of origin.files){
   const actual=createHash('sha256').update(await readFile(join(root,entry.local))).digest('hex');
   if(actual!==entry.localSha256)violations.push(`${entry.local}: presentation provenance must be reviewed and refreshed`);
 }
+const mcpOrigin=JSON.parse(await readFile(join(root,'harness/native/MCP-ORIGIN.json'),'utf8'));
+for(const [path,expected] of [[mcpOrigin.local,mcpOrigin.localSha256],[`node_modules/${mcpOrigin.package}/${mcpOrigin.source}`,mcpOrigin.upstreamSha256]]){
+  const actual=createHash('sha256').update(await readFile(join(root,path))).digest('hex');
+  if(actual!==expected)violations.push(`${path}: MCP adaptation provenance must be reviewed and refreshed`);
+}
 if(violations.length)throw new Error(violations.join('\n'));
 await verifyRelease();
-console.log('Harness ownership, presentation provenance and locked release verified.');
+console.log('Harness ownership, presentation/MCP provenance and locked release verified.');

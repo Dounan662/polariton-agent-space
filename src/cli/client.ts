@@ -10,7 +10,7 @@ import {owner} from '../caller.ts';
 import {EnvironmentClient,loadRackConfig,socketRequest} from '../environment/daemon.ts';
 import {parseJsonInput} from '../json-input.ts';
 import {applicationSocket} from './server.ts';
-import {commands,parseCommand,Request,environmentCommand,isMutation,type CommandName} from './contracts.ts';
+import {commands,parseCommand,Request,environmentCommand,isMutation,automaticRequestId,type CommandName} from './contracts.ts';
 import {faultInfo} from '../operations.ts';
 import {helpOutput,unknownCommand} from './help.ts';
 import {Result,Receipt,FollowRecord,parseResult} from './results.ts';
@@ -20,19 +20,21 @@ const camel=(name:string)=>name.replace(/-([a-z])/g,(_m,c:string)=>c.toUpperCase
 const duration=(value:string)=>{const match=/^(\d+)(ms|s|m|h)$/.exec(value);if(!match)throw new Fault('INVALID_INPUT','Use a duration such as 30s, 2m or 500ms',400);return Number(match[1])*({ms:1,s:1000,m:60000,h:3600000}[match[2]!]!);};
 export function exitCode(value:unknown):number{
  if(!value||typeof value!=='object')return 0;
- const r=value as {state?:string;status?:string;error?:{code?:string};code?:string};
+ const r=value as {state?:string;status?:string;error?:{code?:string};code?:string;result?:{status?:string;actions?:unknown[]}};
  const code=r.error?.code??r.code;
  if(r.state==='uncertain'||code?.includes('UNCERTAIN'))return 7;
+ if(r.state==='waiting'&&r.result?.actions?.length)return 3;
  if(code){
   if(/AUTH|ACTOR|ORIGIN|GRANT_DENIED/.test(code))return 4;
   if(code==='WORKSPACE_CHANGED'||code==='CANVAS_AMBIGUOUS')return 3;
-  if(code==='CAPTURE_TIMEOUT'||code==='CAPTURE_CANCELLED')return 6;
+  if(code==='CHECKPOINT_TIMEOUT'||code==='CHECKPOINT_CANCELLED'||code==='CHECKPOINT_GIT')return 6;
+  if(code==='CHECKPOINT_STATE'||code==='CHECKPOINT_RECOVERY_CONFLICT')return 3;
   if(/CONFLICT|BUSY|LIMIT|CAPACITY|STALE|REQUIRED|NOT_FOUND|NOT_ADMITTED|REMOVED|NO_HISTORY|CLOSED/.test(code))return 3;
   if(/INVALID|USAGE|INPUT|BODY|^STORAGE_VERSION$|^STATE_FORMAT$/.test(code))return 2;
   if(/UNAVAILABLE|ECONNREFUSED|ENOENT/.test(code))return 5;
   if(/TIMEOUT/.test(code))return 8;
  }
- if(r.state==='failed'||r.state==='partial'||r.status==='partial')return 6;
+ if(r.state==='failed'||r.state==='partial'||['partial','blocked','failed','cancelled'].includes(r.status??''))return 6;
  return code?1:0;
 }
 /** Takes one bounded UTF-8 input snapshot before dispatch. Named inputs must be regular files;
@@ -105,7 +107,7 @@ export function parseInvocation(words:string[],flags:Record<string,string|boolea
  if(name==='worker.send'&&Array.isArray(values.content))values.content=values.content.map(part=>part&&typeof part==='object'&&part.type==='image'&&typeof part.path==='string'?{...part,path:resolve(part.path)}:part);
  if(name==='capability.register'&&typeof values.repository==='string'&&values.repository.length)values.repository=resolve(values.repository);
  let request:Request;
- try{request=Request.parse({version:flags.contractVersion===undefined?1:Number(flags.contractVersion),requestId:flags.requestId??(name==='worker.send'?randomUUID():undefined),command:parseCommand(name,values)});}
+ try{request=Request.parse({version:flags.contractVersion===undefined?1:Number(flags.contractVersion),requestId:flags.requestId??(automaticRequestId(name)?randomUUID():undefined),command:parseCommand(name,values)});}
  catch(error){if(error instanceof z.ZodError)throw invalidInvocation(error,{...values,requestId:flags.requestId,version:flags.contractVersion},name,Object.keys(fields.properties??{}));throw error;}
  if(flags.details&&(name==='canvas.move'||(!commands[name].mutation&&name!=='operation.get')))throw new Fault('INVALID_INPUT','--details applies to mutation receipts and operation get; use --help --details for command guidance',400);
  if(flags.follow&&(name!=='worker.get'||flags.wait))throw new Fault('INVALID_INPUT','--follow applies to worker get and cannot combine with --wait',400);
@@ -145,8 +147,8 @@ export async function run(args:string[]):Promise<number>{
  };
  // Make the recovery identity observable before any possible dispatch. A separate client
  // journal would duplicate owner state; stderr also survives a killed stdout observer.
- if(name==='worker.send'){
-  const reference=`main:worker:${request.requestId}`;
+ if(automaticRequestId(name)&&isMutation(request.command)){
+  const reference=`${environmentCommand(name)?'environment':'main:worker'}:${request.requestId}`;
   await new Promise<void>((accept,reject)=>{
    const timer=setTimeout(()=>failed(new Fault('OBSERVER_TIMEOUT','Recovery identity could not be written before dispatch')),timeout);
    const failed=(error:Error)=>{clearTimeout(timer);process.stderr.off('error',failed);reject(error);};
@@ -154,7 +156,7 @@ export async function run(args:string[]):Promise<number>{
    process.stderr.write(JSON.stringify({version:1,kind:'recovery',requestId:request.requestId,operation:reference,action:`harnessctl operation get ${reference}`})+'\n',error=>{if(error)failed(error);else {clearTimeout(timer);process.stderr.off('error',failed);accept();}});
   });
  }
- let result:Record<string,unknown>;try{result=parseResult(name==='environment.publish'&&request.command.kind==='environment.publish'&&request.command.input.preview?'environment.preview':name,await call(request)) as Record<string,unknown>;}catch(error){if(isMutation(request.command)&&(error instanceof z.ZodError||error instanceof SyntaxError||(error instanceof Error&&'code' in error&&['ADMIN_TIMEOUT','ECONNRESET','EPIPE','RESPONSE_LIMIT','OUTPUT_LIMIT'].includes(String(error.code))))){if(name==='canvas.move'){await output({version:1,error:{code:'CANVAS_UNCERTAIN',message:'Transport ended before the browser move outcome was observed',action:`Inspect harnessctl canvas get --project ${values.project} --canvas ${values.canvas}; retain the original request ID and input`}});return 7;}const reference=`${environmentCommand(name)?'environment':name.startsWith('worker.')?'main:worker':'main:research'}:${request.requestId}`;await output({version:1,error:{code:'EXECUTION_UNCERTAIN',message:'Transport ended before the owner outcome was observed',operation:reference,action:`harnessctl operation get ${reference}`}});return 7;}throw error;}
+ let result:Record<string,unknown>;try{result=parseResult(request.command.kind==='environment.publish'&&request.command.input.preview?'environment.preview':request.command.kind==='environment.prepare'&&request.command.input.preview?'environment.preparation-preview':name,await call(request)) as Record<string,unknown>;}catch(error){if(isMutation(request.command)&&(error instanceof z.ZodError||error instanceof SyntaxError||(error instanceof Error&&'code' in error&&['ADMIN_TIMEOUT','ECONNRESET','EPIPE','RESPONSE_LIMIT','OUTPUT_LIMIT'].includes(String(error.code))))){if(name==='canvas.move'){await output({version:1,error:{code:'CANVAS_UNCERTAIN',message:'Transport ended before the browser move outcome was observed',action:`Inspect harnessctl canvas get --project ${values.project} --canvas ${values.canvas}; retain the original request ID and input`}});return 7;}const reference=`${environmentCommand(name)?'environment':name.startsWith('worker.')?'main:worker':'main:research'}:${request.requestId}`;await output({version:1,error:{code:'EXECUTION_UNCERTAIN',message:'Transport ended before the owner outcome was observed',operation:reference,action:`harnessctl operation get ${reference}`}});return 7;}throw error;}
  if(flags.follow){
   const started=Date.now();let sequence=0,total=0;
   while(true){const token=worker??z.object({token:z.string()}).parse(JSON.parse(await readFile(join(config.stateRoot,'application-admin.json'),'utf8'))).token;
@@ -167,7 +169,7 @@ export async function run(args:string[]):Promise<number>{
  if(flags.wait){
   const ref=typeof result.reference==='string'?result.reference:undefined;
   if(!ref)throw new Fault('INVALID_INPUT','Result has no owner command receipt',400);
-  const started=Date.now();while(['accepted','running','waiting'].includes(String(result.state))){if(Date.now()-started>=timeout){await output(present({version:1,data:result,error:{code:'WAIT_TIMEOUT',message:'Observation deadline elapsed; underlying work was not cancelled',action:`harnessctl operation get ${ref}`}}));return 8;}await new Promise(r=>setTimeout(r,config.cliPollMs));result=parseResult('operation.get',await call(Request.parse({version:1,command:{kind:'operation.get',input:{target:ref}}}))) as Record<string,unknown>;}
+  const started=Date.now();while(['accepted','running','waiting'].includes(String(result.state))&&!(result.state==='waiting'&&exitCode(result)===3)){if(Date.now()-started>=timeout){await output(present({version:1,data:result,error:{code:'WAIT_TIMEOUT',message:'Observation deadline elapsed; underlying work was not cancelled',action:`harnessctl operation get ${ref}`}}));return 8;}await new Promise(r=>setTimeout(r,config.cliPollMs));result=parseResult('operation.get',await call(Request.parse({version:1,command:{kind:'operation.get',input:{target:ref}}}))) as Record<string,unknown>;}
  }
  if(name==='capability.preview'&&Array.isArray(result.errors)&&result.errors.length){await output({version:1,data:result});return 2;}
  if(flags.output&&exitCode(result)===0){

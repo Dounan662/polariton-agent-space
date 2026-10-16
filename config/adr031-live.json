@@ -1,0 +1,14 @@
+{
+  "maxRequests": 180,
+  "maxLiveMs": 7200000,
+  "maxOutputTokens": 8192,
+  "maxRequestsPerTurn": 30,
+  "maxActiveWorkers": 4,
+  "observationTimeoutMs": 1800000,
+  "commandTimeoutMs": 900000,
+  "commandBytes": 8388608,
+  "pollMs": 1000,
+  "packageTimeoutMs": 1200000,
+  "operationTimeoutMs": 1800000,
+  "maxPackageBytes": 4294967296
+}

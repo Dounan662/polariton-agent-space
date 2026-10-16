@@ -46,7 +46,7 @@ async function fixture(t:TestContext){
     const h=new Resident(`session-${basename(home)}`,permission,JSON.parse(settings.selectedModel!)[1]);harnesses.push(h);return h;
   };
   const agents=new AgentManager(config,tree,async()=>false,factory,{providers});
-  t.after(async()=>{for(const h of harnesses){h.suspendFailure=false;h.complete();}await agents.close();tree.close();await rm(root,{recursive:true,force:true});});
+  t.after(async()=>{for(const h of harnesses){h.suspendFailure=false;h.complete();}await agents.close();await tree.close();await rm(root,{recursive:true,force:true});});
   const create=()=>agents.create(project,node,id(),{title:'Analyst'});
   const send=(worker:string,text='Research task')=>agents.submit(project,node,worker,{id:id(),text});
   return {providers,agents,project,node,harnesses,revisions,create,send};

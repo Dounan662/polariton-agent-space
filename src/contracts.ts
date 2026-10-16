@@ -28,11 +28,10 @@ export type UploadReceipt = { operationId: string; path: string; version: string
 /** A publisher requests a shared-node snapshot; attribution does not claim file authorship. */
 export const CheckpointPublication = z.object({publisher:Actor,note:Text.optional()}).strict();
 export type CheckpointPublication = z.infer<typeof CheckpointPublication>;
-/** Retained workspace contents with the bounded interval and policy used to verify capture. */
+/** A retained milestone in the node’s shared Git history; Git owns its file inventory. */
 export const Checkpoint = z.object({
-  id:Id,nodeId:Id,commit:z.string(),createdAt:z.number().int().nonnegative(),files:z.array(z.string()),
+  id:Id,nodeId:Id,commit:z.string(),createdAt:z.number().int().nonnegative(),
   publisher:Actor,note:Text.nullable(),
-  capture:z.object({startedAt:z.number().int().nonnegative(),finishedAt:z.number().int().nonnegative(),policy:z.literal('regular-files-v1'),consistency:z.literal('cooperative-verified'),attempts:z.number().int().positive()}).strict(),
 }).strict();
 export type Checkpoint = z.infer<typeof Checkpoint>;
 export type WorkerState = 'inactive' | 'closed' | 'starting' | 'idle' | 'running' | 'interrupting' | 'uncertain' | 'failed';
