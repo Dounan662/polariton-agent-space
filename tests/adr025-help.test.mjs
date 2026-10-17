@@ -131,9 +131,9 @@ test('activation discovery leads to the first task and unknown verbs recover wit
 
 test('compact help exposes reply routing, receipt expansion and creation defaults without a schema read',()=>{
  const send=view(['worker','send','--help']);
- assert.match(send.constraints.join(' '),/Normal assistant replies stay in your conversation/);
+ assert.match(send.constraints.join(' '),/Coworkers do not receive normal assistant text/);
  assert.match(send.constraints.join(' '),/authenticated sender/);
- assert.match(send.constraints.join(' '),/Do not poll history or status/);
+ assert.match(send.constraints.join(' '),/Do not poll history\/status/);
  assert.match(view(['worker','history','--help']).result,/inspection and troubleshooting/);
  assert.match(view(['worker','create','--help']).constraints.join(' '),/configured default, not the creator/);
  assert.match(view(['checkpoint','publish','--help']).constraints.join(' '),/shared index and advances the current branch/);

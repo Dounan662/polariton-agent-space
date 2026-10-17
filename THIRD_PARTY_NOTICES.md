@@ -8,6 +8,7 @@ replace the licenses or ownership of third-party components.
 | Adapted DeepSeek Harness presentation code | [Origin and modifications](web/src/native/README.md), [MIT notice](web/src/native/LICENSE), and `web/src/native/ORIGIN.json` |
 | Adapted DeepSeek Harness MCP client | [MIT notice](harness/native/MCP-LICENSE) and [origin, version and modifications](harness/native/MCP-ORIGIN.json) |
 | MCP artwork | [Bundled license](web/src/assets/mcp-LICENSE.txt) |
+| Simple Icons | `simple-icons` package, its CC0 license and per-icon brand guidance |
 | Inter font | `@fontsource/inter` package and its bundled license |
 | React Flow | `@xyflow/react` package and its bundled license; retain the visible attribution |
 | DSH, Cordis, and other installed packages | Their own package licenses; exact versions and integrity hashes are in `package-lock.json` |

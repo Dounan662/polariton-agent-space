@@ -6,7 +6,7 @@ import {RefreshResource} from './workspace-resource.ts';
 import {api,ApiError,upload,uuid} from './api.ts';
 import {Markdown} from './ui/Markdown.tsx';
 import {PdfPreview} from './pdf.tsx';
-import {CodeBlock,Tooltip,IconBranchOutline16,IconRefreshOutline16,IconChevronDownOutline14,IconChevronRightOutline14,IconWrapLinesOutline16,IconCodeOutline16,IconRightUpOutline14} from './ui/index.ts';
+import {CodeBlock,Tooltip,IconBranchOutlineRegular,IconRefreshOutlineRegular,IconChevronDownOutlineRegular,IconChevronRightOutlineRegular,IconWrapLinesOutlineRegular,IconCodeOutlineRegular,IconRightUpOutlineRegular} from './ui/index.ts';
 import {FileTypeIcon} from './ui/FileTypeIcon.tsx';
 type PreviewState={source:boolean;wrap:boolean;scroll:number;loaded?:number;version?:string};
 const defaultPreview:PreviewState={source:false,wrap:false,scroll:0};
@@ -59,7 +59,7 @@ function Directory({path,active,reload,openFile,expanded,toggle}:{path:string;ac
   {state.data&&!state.error&&!entries.length&&<small>Empty directory</small>}
   {entries.map(entry=><div key={entry.path}>
   <Tooltip label={entry.path} side="bottom"><button className="file-row" aria-expanded={entry.kind==='directory'?expanded.includes(entry.path):undefined} onClick={()=>entry.kind==='file'?openFile(entry.path):toggle(entry.path)}>
-   <span className="file-disclosure" aria-hidden="true">{entry.kind==='directory'&&(expanded.includes(entry.path)?<IconChevronDownOutline14/>:<IconChevronRightOutline14/>)}</span>
+   <span className="file-disclosure" aria-hidden="true">{entry.kind==='directory'&&(expanded.includes(entry.path)?<IconChevronDownOutlineRegular/>:<IconChevronRightOutlineRegular/>)}</span>
    {entry.kind==='directory'?<FileTypeIcon kind="folder" size={16}/>:<FileTypeIcon path={entry.path} size={16}/>}
    <span className="file-name">{entry.name}</span><small>{entry.bytes===null?'':`${entry.bytes.toLocaleString()} B`}</small>
   </button></Tooltip>
@@ -81,10 +81,10 @@ function FilePreview({path,view,onView,maxPdfPages,maxPdfPixels,active}:{active:
   <div className="file-toolbar" role="group" aria-label="File preview actions">
    <div className="file-metadata">{page&&<><span>{page.bytes.toLocaleString()} bytes</span><Tooltip label={`Version ${page.version}`} side="bottom"><code tabIndex={0}>{page.version.slice(0,10)}</code></Tooltip></>}</div>
    <div className="workspace-actions">
-    <WorkspaceAction label="Reload file" disabled={state.refreshing} onClick={state.resource.invalidate}><IconRefreshOutline16/></WorkspaceAction>
-    {!image&&!pdf&&<WorkspaceAction label="Wrap lines" pressed={view.wrap} onClick={()=>onView({...view,wrap:!view.wrap})}><IconWrapLinesOutline16/></WorkspaceAction>}
-    {extension==='md'&&<WorkspaceAction label="Show Markdown source" pressed={view.source} onClick={()=>onView({...view,source:!view.source})}><IconCodeOutline16/></WorkspaceAction>}
-    {page&&<Tooltip label="Open original file in new tab" side="bottom"><a className="workspace-icon" href={url} target="_blank" rel="noreferrer" aria-label="Open original file in new tab"><span aria-hidden="true"><IconRightUpOutline14 size={16}/></span></a></Tooltip>}
+    <WorkspaceAction label="Reload file" disabled={state.refreshing} onClick={state.resource.invalidate}><IconRefreshOutlineRegular/></WorkspaceAction>
+    {!image&&!pdf&&<WorkspaceAction label="Wrap lines" pressed={view.wrap} onClick={()=>onView({...view,wrap:!view.wrap})}><IconWrapLinesOutlineRegular/></WorkspaceAction>}
+    {extension==='md'&&<WorkspaceAction label="Show Markdown source" pressed={view.source} onClick={()=>onView({...view,source:!view.source})}><IconCodeOutlineRegular/></WorkspaceAction>}
+    {page&&<Tooltip label="Open original file in new tab" side="bottom"><a className="workspace-icon" href={url} target="_blank" rel="noreferrer" aria-label="Open original file in new tab"><span aria-hidden="true"><IconRightUpOutlineRegular size={16}/></span></a></Tooltip>}
    </div>
   </div>
   <div ref={container} tabIndex={0} role="region" aria-label={`Preview of ${path}`} className={`file-document ${view.wrap?'wrap-code':''}`} onScroll={e=>{if(restored.current)onView({...view,scroll:e.currentTarget.scrollTop,loaded:page?.next??page?.bytes,version:page?.version});}}>
@@ -148,7 +148,7 @@ function WorkspaceActions({base,onReload,onChanged,children}:{base:string;onRelo
  return <>
   <div className="section-label workspace-heading"><span>WORKSPACE FILES</span><div className="workspace-actions">
    <WorkspaceAction label={openingFolder?'Opening workspace folder…':'Open workspace folder in system file manager'} disabled={openingFolder} onClick={()=>void openFolder()}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M14 7V4H8L6 2H2v11h5m3-6h4v4m0-4-5 5"/></svg></WorkspaceAction>
-   <WorkspaceAction label="Refresh workspace files" onClick={onReload}><IconRefreshOutline16/></WorkspaceAction>
+   <WorkspaceAction label="Refresh workspace files" onClick={onReload}><IconRefreshOutlineRegular/></WorkspaceAction>
    <WorkspaceAction label={action==='upload'?`Uploading file (${Math.round(progress*100)}%)`:'Upload file'} disabled={action!==null} onClick={()=>input.current?.click()}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M8 10V2m-3 3 3-3 3 3M3 10v3h10v-3"/></svg></WorkspaceAction>
    <WorkspaceAction label={action==='checkpoint'?'Publishing checkpoint…':'Publish checkpoint'} disabled={action!==null} onClick={()=>void publishCheckpoint()}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M1.5 8h3m7 0h3"/><circle cx="8" cy="8" r="3.5"/></svg></WorkspaceAction>
   </div></div>
@@ -195,10 +195,10 @@ export function WorkspacePanel({maxPdfPages,maxPdfPixels,maxTabs,maxExpanded,bas
     {!checkpoints.length&&<p className="workspace-empty">No checkpoints yet</p>}
     {checkpoints.map(checkpoint=><div className="checkpoint" key={checkpoint.id}>
      <details className="checkpoint-description">
-      <summary><IconChevronRightOutline14/><time dateTime={new Date(checkpoint.createdAt).toISOString()}>{new Date(checkpoint.createdAt).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</time><CheckpointMessage text={checkpoint.note?.trim()||'No checkpoint message'}/></summary>
+      <summary><IconChevronRightOutlineRegular/><time dateTime={new Date(checkpoint.createdAt).toISOString()}>{new Date(checkpoint.createdAt).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</time><CheckpointMessage text={checkpoint.note?.trim()||'No checkpoint message'}/></summary>
       <div className="checkpoint-detail"><time dateTime={new Date(checkpoint.createdAt).toISOString()}>{new Date(checkpoint.createdAt).toLocaleString()}</time><span>Published by {checkpoint.publisher.kind==='owner'?'you':`worker ${checkpoint.publisher.id}`}</span>{checkpoint.note&&<p>{checkpoint.note}</p>}<code>{checkpoint.commit}</code></div>
      </details>
-     <WorkspaceAction label="Create node from checkpoint" onClick={()=>onContinue(checkpoint.id)}><IconBranchOutline16/></WorkspaceAction>
+     <WorkspaceAction label="Create node from checkpoint" onClick={()=>onContinue(checkpoint.id)}><IconBranchOutlineRegular/></WorkspaceAction>
     </div>)}
    </div>
   </section>

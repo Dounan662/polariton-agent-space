@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { Context } from '@deepseek-ai/cordis';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import { interruptedTurnClosers } from '@deepseek-ai/dsh-session';
 import { readHistory } from '../harness/history.mjs';
 import { persistHistory } from './fixtures/history.mjs';

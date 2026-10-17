@@ -8,7 +8,7 @@ import {Session,SessionId,SESSION_FORMAT_VERSION,type SessionEvent} from '@deeps
 import {SessionProjectionRegistry} from '@deepseek-ai/dsh-session-projection';
 import {TokenMeter} from '@deepseek-ai/dsh-token-meter';
 import * as SessionStats from '@deepseek-ai/dsh-session-stats';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import {AssistantStreamAccumulator} from '@deepseek-ai/dsh-llm';
 import {sessionMetrics} from '../harness/metrics.ts';
 import {HarnessHistory} from '../harness/history.ts';

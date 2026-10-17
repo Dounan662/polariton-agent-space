@@ -1,6 +1,6 @@
 import { memo, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { IconChevronDownOutline14, IconChevronUpOutline14 } from '../../../../ui/icons/index.tsx'
+import { IconChevronDownOutlineRegular, IconChevronUpOutlineRegular } from '../../../../ui/icons/index.tsx'
 import { TextShimmer } from './TextShimmer.tsx'
 import css from './DisclosureRow.module.css'
 
@@ -13,13 +13,15 @@ export interface DisclosureRowProps {
   onToggle: () => void
   /** Animate the complete header while its owning operation is running. */
   running?: boolean | undefined
-  /** Makes the complete title row the disclosure target. */
+  /** Makes the title row the disclosure target; with an accessory, it shrinks to its content width. */
   expandOnRowClick?: boolean | undefined
   /** Replaces the collapsed icon with a chevron while the row is hovered. */
   previewChevron?: boolean | undefined
   /** Keeps `collapsedContent` inline while open. */
   keepContentWhenOpen?: boolean | undefined
   collapsedContent?: ReactNode
+  /** Independent action beside the title, outside the disclosure target and shimmer. */
+  headerAccessory?: ReactNode
   children?: ReactNode
   className?: string | undefined
   rowClassName?: string | undefined
@@ -49,6 +51,7 @@ export const DisclosureRow = memo(function DisclosureRow({
   previewChevron = expandable,
   keepContentWhenOpen = false,
   collapsedContent,
+  headerAccessory,
   children,
   className,
   rowClassName,
@@ -72,45 +75,48 @@ export const DisclosureRow = memo(function DisclosureRow({
     ? (
       <>
         <span className={css.iconIdle}>{icon}</span>
-        <IconChevronDownOutline14 className={clsx(chevronClassName, css.chevronHover)} />
+        <IconChevronDownOutlineRegular className={clsx(chevronClassName, css.chevronHover)} />
       </>
     )
     : icon
   const leading = open
-    ? <IconChevronUpOutline14 className={chevronClassName} />
+    ? <IconChevronUpOutlineRegular className={chevronClassName} />
     : collapsedLeading
 
   return (
     <div className={clsx(css.root, className)} data-open={open || undefined}>
-      <div
-        className={clsx(css.row, rowClassName)}
-        data-disclosure-row
-        data-expandable={rowExpands || undefined}
-        role={rowExpands ? 'button' : undefined}
-        tabIndex={rowExpands ? 0 : undefined}
-        aria-expanded={rowExpands ? open : undefined}
-        onClick={rowExpands ? onToggle : undefined}
-        onKeyDown={rowExpands ? toggleFromKeyboard : undefined}
-      >
-        {expandable && !rowExpands ? (
-          <button
-            type="button"
-            className={clsx(css.leading, leadingClassName)}
-            aria-label={title}
-            aria-expanded={open}
-            onClick={toggleFromLeading}
-          >
-            {leading}
-          </button>
-        ) : (
-          <span className={clsx(css.leading, leadingClassName)}>
-            {leading}
-          </span>
-        )}
-        <TextShimmer active={running} className={contentClassName} contentClassName={contentLayoutClassName}>
-          <TextShimmer className={clsx(css.title, titleClassName)}>{title}</TextShimmer>
-          {(keepContentWhenOpen || !open) && collapsedContent}
-        </TextShimmer>
+      <div className={css.header} data-disclosure-header data-has-accessory={!!headerAccessory || undefined}>
+        <div
+          className={clsx(css.row, rowClassName)}
+          data-disclosure-row
+          data-expandable={rowExpands || undefined}
+          role={rowExpands ? 'button' : undefined}
+          tabIndex={rowExpands ? 0 : undefined}
+          aria-expanded={rowExpands ? open : undefined}
+          onClick={rowExpands ? onToggle : undefined}
+          onKeyDown={rowExpands ? toggleFromKeyboard : undefined}
+        >
+          {expandable && !rowExpands ? (
+            <button
+              type="button"
+              className={clsx(css.leading, leadingClassName)}
+              aria-label={title}
+              aria-expanded={open}
+              onClick={toggleFromLeading}
+            >
+              {leading}
+            </button>
+          ) : (
+            <span className={clsx(css.leading, leadingClassName)}>
+              {leading}
+            </span>
+          )}
+          <TextShimmer active={running} className={contentClassName} contentClassName={contentLayoutClassName}>
+            <TextShimmer className={clsx(css.title, titleClassName)}>{title}</TextShimmer>
+            {(keepContentWhenOpen || !open) && collapsedContent}
+          </TextShimmer>
+        </div>
+        {headerAccessory}
       </div>
       {open && children}
     </div>

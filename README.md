@@ -116,10 +116,10 @@ account access to `/var/run/docker.sock`.
 
 ## Platforms and data
 
-The baseline was verified on macOS arm64 with Node **24.11.0** and Ubuntu 26.04
-amd64 with Node **24.21.0**. The latest capability preparation and shared Git
-checkpoint upgrades were qualified on macOS; they have not been requalified on
-Ubuntu. Ubuntu 24.04 is implemented but not fully qualified; Windows and Intel
+Earlier baselines were verified on macOS arm64 with Node **24.11.0** and Ubuntu
+26.04 amd64 with Node **24.21.0**. The current Harness **0.2.1-rc.2** runtime and
+presentation have local macOS verification; installed macOS and Ubuntu deployment
+campaigns have not been rerun for this upgrade. Ubuntu 24.04 is implemented but not fully qualified; Windows and Intel
 Macs are not supported.
 See [compatibility and verification scope](docs/COMPATIBILITY.md) for what was checked on this copy.
 

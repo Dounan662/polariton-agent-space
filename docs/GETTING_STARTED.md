@@ -11,7 +11,9 @@ running in Terminal. Open the complete browser link it prints, including the one
 sign-in token. After a restart, use the new link.
 
 In **Settings → Models & providers**, enter your provider key and choose a default
-model for new workers. Saving a key does not verify model access. Sending work uses
+model for new workers. A saved key takes precedence over a launch-environment key.
+Settings can replace or remove the saved key; removing it exposes any remaining
+environment fallback. Saving a key does not verify model access. Sending work uses
 your provider account and may incur charges; startup itself needs no key. See
 [security](../SECURITY.md) before sharing settings or backups.
 

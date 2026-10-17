@@ -1,6 +1,6 @@
 import {useDisclosure} from './use-disclosure.ts'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
-import { DisclosureRow, IconBrowseOutline16, IconContextInjectionOutline16, ReferenceIconRegular } from '../../../../../chat-primitives.tsx'
+import { DisclosureRow, IconBrowseOutlineRegular, IconContextInjectionOutlineRegular, ReferenceIconRegular } from '../../../../../chat-primitives.tsx'
 import type { ContextMessageNode } from '../contract/snapshot.ts'
 import { contextBody } from './ContextBody.tsx'
 import css from './ContextInjectionRow.module.css'
@@ -50,9 +50,9 @@ export function ContextInjectionRow({ content, source, producer, form, t }: Cont
   return (
     <DisclosureRow
       className={css.root}
-      icon={toolBlocks !== undefined ? <IconBrowseOutline16 size={14} /> : producer.role === 'recall'
+      icon={toolBlocks !== undefined ? <IconBrowseOutlineRegular size={14} /> : producer.role === 'recall'
         ? <span data-context-recall-icon><ReferenceIconRegular kind="session" /></span>
-        : <IconContextInjectionOutline16 size={14} />}
+        : <IconContextInjectionOutlineRegular size={14} />}
       chevronClassName={css.chevron}
       title={single !== undefined ? t(single.type === 'tool-addition' ? 'message.toolAdded' : 'message.toolRemoved', { name: single.toolName }) : t(toolBlocks !== undefined ? 'message.toolsUpdated' : producer.role === 'recall' ? 'message.contextRecall' : 'message.contextInjection')}
       collapsedContent={toolSummary !== null ? (

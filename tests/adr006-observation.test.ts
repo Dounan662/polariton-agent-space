@@ -493,3 +493,46 @@ test('native grouping keeps one tool identity from streamed preparation through 
   assert.equal(f.repairs, 0); assert.equal(f.observation.error, '');
   f.observation.dispose();
 });
+
+// DSH 0.2.1 retains successful attempt preparation until the step closes. A
+// prepared call omitted from the durable answer must disappear at that boundary.
+test('successful assistant settlement retires undispatched preparation at step end', () => {
+  const f=fixture();f.baseline();f.frame(1,start);
+  f.frame(2,{type:'chunk',attemptId,revision:2,index:0,time:2000,
+    chunk:{type:'tool-call-delta',index:0,id:'never-dispatched',name:'bash',argumentsDelta:'{"description":"Checking'} });
+  const tool=f.chat().nodes.values().find(node=>node.kind==='tool-call');assert.ok(tool);
+  f.durable(3,answer());
+  f.frame(4,{type:'end',attemptId,revision:3,index:1,outcome:{kind:'committed',eventType:'assistant/message',seq:3}});
+  assert.equal(f.chat().nodes.get(tool.key)?.visibility,'visible');
+  f.durable(5,event(4,'step/end',{turn:1,step:1}));
+  assert.equal(f.chat().nodes.get(tool.key)?.visibility,'hidden');
+  assert.equal(f.chat().legacy.runningCalls.length,0);
+  f.durable(6,event(5,'step/start',{turn:1,step:2}));
+  f.frame(7,{type:'start',attemptId:LlmAttemptId('second'),revision:4,startedAfterSeq:SessionSeq(5),turn:1,step:2});
+  assert.equal(f.repairs,0,'a settled step permits the next native stream');
+  assert.equal(f.observation.inspectSource()?.events.length,6);
+  f.observation.dispose();
+});
+
+test('notice-woken turns remain in the human exchange until a later human opening', () => {
+  const f=fixture();
+  const events=[event(0,'turn/start',{turn:1}),event(1,'step/start',{turn:1,step:1}),user(2,'Human opening'),
+    event(3,'step/end',{turn:1,step:1}),event(4,'turn/end',{turn:1,reason:{kind:'completed'}}),
+    event(5,'agent/inbox/spliced',{target:'next-turn',start:0,inserted:[{id:'notice',source:{kind:'notice'}}]}),
+    event(6,'agent/inbox/spliced',{target:'next-turn',start:0,removedCount:1,inserted:[]}),
+    event(7,'turn/start',{turn:2}),event(8,'step/start',{turn:2,step:1}),
+    event(9,'user/message',{id:'notice',role:'user',source:{kind:'notice'},content:[{type:'text',text:'Background result'}]},'append')];
+  f.baseline(events);
+  const first=f.chat().nodes.values().find(node=>node.kind==='user');assert.ok(first);
+  const trigger=f.chat().nodes.values().find(node=>node.kind==='turn-trigger');assert.ok(trigger);
+  assert.equal(first.groupTree,'exchange');assert.equal(trigger.groupTree,'input');
+  assert.equal(f.chat().nodes.bottomSource(first.key).getSnapshot(),true);
+  assert.equal(f.chat().nodes.bottomSource(trigger.key).getSnapshot(),true);
+  f.durable(1,event(10,'step/end',{turn:2,step:1}));
+  f.durable(2,event(11,'turn/end',{turn:2,reason:{kind:'completed'}}));
+  f.durable(3,event(12,'turn/start',{turn:3}));
+  f.durable(4,event(13,'step/start',{turn:3,step:1}));f.durable(5,user(14,'Next human opening'));
+  assert.equal(f.chat().nodes.bottomSource(first.key).getSnapshot(),false);
+  assert.equal(f.chat().nodes.bottomSource(trigger.key).getSnapshot(),false);
+  f.observation.dispose();
+});

@@ -1,12 +1,12 @@
 /** Assistant reasoning disclosure, independent of Tool-call presentation. */
 import { memo, useMemo } from 'react'
-import { DisclosureRow, IconThinkOutline14, MarkdownText, TextShimmer } from '../../../../../chat-primitives.tsx'
+import { DisclosureRow, IconThinkOutlineRegular, MarkdownText, TextShimmer } from '../../../../../chat-primitives.tsx'
 import type { ChatViewSlotProps, UseDisclosure, UsePresentation } from '../contract/slots.ts'
 import { markdownLabels } from '../markdown-labels.ts'
 import a11yCss from './accessibility.module.css'
 import css from './ReasoningRow.module.css'
 
-const THINK_ICON = <IconThinkOutline14 size={14} />
+const THINK_ICON = <IconThinkOutlineRegular size={14} />
 
 function firstLine(text: string): string {
   const newline = text.indexOf('\n')

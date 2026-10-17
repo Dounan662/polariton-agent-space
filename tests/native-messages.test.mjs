@@ -13,7 +13,7 @@ import Projections from '@deepseek-ai/dsh-session-projection';
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
 import Tools from '@deepseek-ai/dsh-tools';
 import LocalAttachments from '@deepseek-ai/dsh-attachment-local';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import {NativeMessages} from '../harness/messages.mjs';
 import {readHistory} from '../harness/history.mjs';
 import {submissionContent} from '../src/contracts.ts';

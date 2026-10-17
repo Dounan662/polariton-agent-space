@@ -6,7 +6,7 @@ import type {WorkerObservation} from './native/presentation.ts';
 import {Conversation,Trajectory,SessionStatistics} from './native/views.tsx';
 import {ActionMenu} from './action-menu.tsx';
 import {Select} from './select.tsx';
-import {Tooltip,IconPlayOutline16,IconStopFill16,IconSendOutline14} from './ui/index.ts';
+import {Tooltip,IconPlayOutlineRegular,IconStopFillRegular,IconSendOutlineRegular} from './ui/index.ts';
 import {api,upload,uuid,ApiError} from './api.ts';
 import {canSendMessage,saveOutgoing,restoreOutgoing,recoverOutgoing,type Outgoing} from './messages.ts';
 /** Retained creation evidence and current setup remain inspectable without execution. */
@@ -97,8 +97,8 @@ export function WorkerPane({visible,choicesPollMs,notices,worker,observation,onE
    </div>
    <ActionMenu label="Worker controls" actions={[
     {label:'Worker details',icon:<span aria-hidden="true">ⓘ</span>,onSelect:onDetails},
-    {label:'Resume',icon:<IconPlayOutline16/>,disabled:active||busy||(!worker.harnessSessionId&&!['failed','uncertain','closed'].includes(worker.state)),onSelect:()=>void command('resume')},
-    {label:'Close worker',icon:<IconStopFill16/>,onSelect:()=>void command('close')},
+    {label:'Resume',icon:<IconPlayOutlineRegular/>,disabled:active||busy||(!worker.harnessSessionId&&!['failed','uncertain','closed'].includes(worker.state)),onSelect:()=>void command('resume')},
+    {label:'Close worker',icon:<IconStopFillRegular/>,onSelect:()=>void command('close')},
   ]}/></header>
   {notices}
   {outboxError&&<div className="notice" role="alert">{outboxError}<button onClick={()=>{localStorage.removeItem(`polariton.outbox.${worker.id}`);setOutboxError('');}}>Dismiss saved receipts</button></div>}
@@ -130,7 +130,7 @@ export function WorkerPane({visible,choicesPollMs,notices,worker,observation,onE
       disabled={busy||active||worker.state==='uncertain'||worker.cleanupPending||!setup}
       onChange={value=>void command('configure',{configId:'model',value})}
       options={[...(!modelOptions.some(option=>option.value===worker.model)?[{value:worker.model??'',label:modelName}]:[]),...modelOptions.map(option=>({value:option.value,label:option.name}))]}/>
-    <div className="composer-actions">{active&&<button disabled={busy||worker.state==='interrupting'} onClick={interrupt}>Interrupt</button>}<Tooltip label="Send · Shift + Return" side="top"><span className="composer-send-hint"><button className="primary composer-send" aria-label="Send" aria-keyshortcuts="Shift+Enter Control+Enter Meta+Enter" disabled={!canSend} onClick={send}><span aria-hidden="true"><IconSendOutline14 size={18}/></span></button></span></Tooltip></div></div></div>
+    <div className="composer-actions">{active&&<button disabled={busy||worker.state==='interrupting'} onClick={interrupt}>Interrupt</button>}<Tooltip label="Send · Shift + Return" side="top"><span className="composer-send-hint"><button className="primary composer-send" aria-label="Send" aria-keyshortcuts="Shift+Enter Control+Enter Meta+Enter" disabled={!canSend} onClick={send}><span aria-hidden="true"><IconSendOutlineRegular size={18}/></span></button></span></Tooltip></div></div></div>
   </div>
   <SessionStatistics observation={observation}/>
  </section>;

@@ -2,10 +2,10 @@ import {chatPresentationConfig} from '../../../../../presentation-config.ts'
 /** Stable process container; display policy changes visibility, never member parents. */
 import { memo, useCallback, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import {
-  IconAgentPresetOutline16, IconApiOutline14, IconBrowseOutline16, IconChevronDownOutline14,
-  IconChevronUpOutline14, IconCodeOutline16, IconEditOutline16, IconGlobeOutline14,
-  IconPlanOutline14, IconQuestionOutline14, IconSearchOutline16, IconSparkle16,
-  IconThinkOutline14, TextShimmer,
+  IconAgentPresetOutlineRegular, IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
+  IconChevronUpOutlineRegular, IconCodeOutlineRegular, IconEditOutlineRegular, IconGlobeOutlineRegular,
+  IconPlanOutlineRegular, IconQuestionOutlineRegular, IconSearchOutlineRegular, IconSparkleRegular,
+  IconThinkOutlineRegular, TextShimmer,
 } from '../../../../../chat-primitives.tsx'
 import type { GroupKey, NodeReference } from '../../../../../conversation.ts'
 import type { ProcessActivity } from '../contract/process-groups.ts'
@@ -36,20 +36,20 @@ interface LiveProcessTitle {
 }
 
 const PROCESS_ICONS: Record<ProcessTitleActivity, ReactNode> = {
-  thinking: <IconThinkOutline14 />,
-  read: <IconBrowseOutline16 size={14} />,
-  readImage: <IconBrowseOutline16 size={14} />,
-  search: <IconSearchOutline16 size={14} />,
-  edit: <IconEditOutline16 size={14} />,
-  write: <IconEditOutline16 size={14} />,
-  commands: <IconApiOutline14 />,
-  code: <IconCodeOutline16 size={14} />,
-  webSearch: <IconGlobeOutline14 />,
-  webFetch: <IconBrowseOutline16 size={14} />,
-  subagents: <IconAgentPresetOutline16 size={14} />,
-  plan: <IconPlanOutline14 />,
-  questions: <IconQuestionOutline14 />,
-  tools: <IconSparkle16 size={14} />,
+  thinking: <IconThinkOutlineRegular />,
+  read: <IconBrowseOutlineRegular size={14} />,
+  readImage: <IconBrowseOutlineRegular size={14} />,
+  search: <IconSearchOutlineRegular size={14} />,
+  edit: <IconEditOutlineRegular size={14} />,
+  write: <IconEditOutlineRegular size={14} />,
+  commands: <IconApiOutlineRegular />,
+  code: <IconCodeOutlineRegular size={14} />,
+  webSearch: <IconGlobeOutlineRegular />,
+  webFetch: <IconBrowseOutlineRegular size={14} />,
+  subagents: <IconAgentPresetOutlineRegular size={14} />,
+  plan: <IconPlanOutlineRegular />,
+  questions: <IconQuestionOutlineRegular />,
+  tools: <IconSparkleRegular size={14} />,
 }
 
 function sameLiveProcessTitle(left: LiveProcessTitle, right: LiveProcessTitle): boolean {
@@ -118,7 +118,7 @@ const ProcessGroupHeader = memo(function ProcessGroupHeader({ groupKey, useChatG
       <span className={css.leading} aria-hidden="true">
         <span className={css.activityIcon} data-step-process-icon>{PROCESS_ICONS[activity]}</span>
         <span className={css.chevron} data-step-process-chevron>
-          {open ? <IconChevronUpOutline14 /> : <IconChevronDownOutline14 />}
+          {open ? <IconChevronUpOutlineRegular /> : <IconChevronDownOutlineRegular />}
         </span>
       </span>
       <TextShimmer active={!data.closed}>
@@ -145,7 +145,7 @@ export const ChatGroupSeat = memo(function ChatGroupSeat({ groupKey, useChatGrou
     || (policy.stepGrouping === 'history' && turnLocation?.status !== 'open'))
   const reason = turnLocation?.end?.data.reason.kind
   const alwaysOpen = presentation?.turnClosed === false || presentation?.hasInterleavedInput === true
-    || reason === 'aborted' || reason === 'error'
+    || reason === 'aborted' || reason === 'interrupted' || reason === 'error'
   const spec = presentation?.spec
   const selectStored = useCallback((state: Readonly<ChatStoreState>) => turn === undefined
     ? undefined : storedTurnProcessEntry(state, turn), [turn])

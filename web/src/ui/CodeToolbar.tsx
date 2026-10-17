@@ -1,9 +1,9 @@
 /** Shared language, wrapping, and clipboard controls for code cards. */
 import {
-  IconCheckOutline16, IconCopyOutline16, IconWrapLinesOutline16,
-} from '../../../../ui/icons/index.tsx'
-import { Tooltip } from '../../../../ui/Tooltip.tsx'
-import { supportsHighlighting } from '../../../../ui/markdown/highlight.ts'
+  IconCheckOutlineRegular, IconCopyOutlineRegular, IconWrapLinesOutlineRegular,
+} from './icons/index.tsx'
+import { Tooltip } from './Tooltip.tsx'
+import { supportsHighlighting } from './markdown/highlight.ts'
 import css from './CodeCard.module.css'
 
 /** Localized language fallback and wrapping actions supplied by the card owner. */
@@ -48,12 +48,12 @@ export function CodeToolbar({ lang, title, status, labels, copyLabel, copiedLabe
         {status !== undefined && <span className={css.status}>{status}</span>}
         {onWrap !== undefined && <Tooltip label={wrapLabel} side="top">
           <button type="button" className={css.action} aria-label={labels.wrapLabel} aria-pressed={wrapped} onClick={onWrap}>
-            {wrapped ? <IconWrapLinesOutline16 size={14} /> : <IconWrapLinesOutline16 size={14} />}
+            {wrapped ? <IconWrapLinesOutlineRegular size={14} /> : <IconWrapLinesOutlineRegular size={14} />}
           </button>
         </Tooltip>}
         {onCopy !== undefined && <Tooltip label={clipboardLabel} side="top">
           <button type="button" className={css.action} aria-label={clipboardLabel} onClick={onCopy}>
-            {copied ? <IconCheckOutline16 size={14} /> : <IconCopyOutline16 size={14} />}
+            {copied ? <IconCheckOutlineRegular size={14} /> : <IconCopyOutlineRegular size={14} />}
           </button>
         </Tooltip>}
       </div>

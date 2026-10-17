@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { IconChevronDownOutline14 } from '../../../../../chat-primitives.tsx'
+import { IconChevronDownOutlineRegular } from '../../../../../chat-primitives.tsx'
 import type { ChatNodeViewProps } from '../contract/slots.ts'
 import { turnProcessAlwaysOpen } from '../contract/turn-process.ts'
 import { formatRunDuration } from './message-chrome.ts'
@@ -18,16 +18,17 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
   if (turn?.status !== 'closed') return null
   const canCollapse = turnProcess.foldable && turnProcess.hasContent && !turnProcessAlwaysOpen(node)
   const reason = turn.end?.data.reason.kind
+  const stopped = reason === 'aborted' || reason === 'interrupted'
   const elapsedMs = turn.start === undefined || turn.end === undefined ? undefined
     : Math.max(1000, turn.end.time - turn.start.time)
-  const duration = elapsedMs === undefined || reason === 'aborted' || reason === 'error' ? undefined
+  const duration = elapsedMs === undefined || stopped || reason === 'error' ? undefined
     : formatRunDuration(elapsedMs, t)
-  // Other end reasons retain elapsed time; only cancellation and failure replace it.
-  const label = reason === 'aborted' ? t('message.stopped')
+  // Other end reasons retain elapsed time; only stops and failure replace it.
+  const label = stopped ? t('message.stopped')
     : reason === 'error' ? t('message.turnProcess.failed')
       : duration === undefined ? t('message.turnProcess.worked')
         : t('message.turnProcess.took')
-  const announcement = reason === 'aborted' ? t('message.stopped')
+  const announcement = stopped ? t('message.stopped')
     : reason === 'error' ? t('message.turnProcess.failed')
       : t('message.turnProcess.worked')
   return (
@@ -54,7 +55,7 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
             <span key={index} className={part.numeric ? css.durationNumber : undefined}>{part.text}</span>
           ))}
         </span>
-        {canCollapse && <IconChevronDownOutline14 className={css.chevron} />}
+        {canCollapse && <IconChevronDownOutlineRegular className={css.chevron} />}
       </button>
     </>
   )

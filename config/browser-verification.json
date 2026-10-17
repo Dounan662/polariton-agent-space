@@ -2,7 +2,7 @@
   "port": 4305,
   "stateRoot": "../.local/browser-acceptance",
   "provider": "deepseek-official",
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-flash",
   "maxOutputTokens": 4096,
   "maxActiveWorkers": 4,
   "requestTimeoutMs": 180000,

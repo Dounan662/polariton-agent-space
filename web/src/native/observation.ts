@@ -130,12 +130,16 @@ export class SourceObservation {
   }
   if(!outcome){if(value.kind==='event')this.publish();return;}
   if(outcome.type==='rebaseline'){this.rebaseline();return;}
-  if(outcome.type==='settlement'||outcome.type==='abandonment')this.entries=this.entries.filter(entry=>entry.type!=='transient'||entry.event.data.attemptId!==outcome.attemptId);
+  const retireAttemptId=outcome.type==='publish'?outcome.retireAttemptId:outcome.type==='settlement'||outcome.type==='abandonment'?outcome.attemptId:undefined;
+  if(retireAttemptId!==undefined)this.entries=this.entries.filter(entry=>entry.type!=='transient'||entry.event.data.attemptId!==retireAttemptId);
   if(outcome.type!=='abandonment')this.entries.push(outcome.entry);
   if(this.entries.length>this.maxEvents){this.fail('Loaded history exceeds configured event budget');return;}
   const publication=outcome.type==='settlement'?this.engine.settleAssistant(outcome.attemptId,outcome.entry):
    outcome.type==='abandonment'?this.engine.replaceWindow(this.entries,this.page?.before!==null&&Boolean(this.page)):
    this.engine.append(outcome.entry);
+  // Successful streams retain preparation until step/end, then retire it after
+  // publishing the step boundary so missing dispatches cannot leave ghost tools.
+  if(outcome.type==='publish'&&outcome.retireAttemptId!==undefined)this.engine.settleAssistant(outcome.retireAttemptId);
   if(outcome.type==='transient'&&publication!=='immediate'){
    if(publication==='animation-frame'&&!this.cancelPaint)this.cancelPaint=this.schedule(()=>{
     this.cancelPaint=null;

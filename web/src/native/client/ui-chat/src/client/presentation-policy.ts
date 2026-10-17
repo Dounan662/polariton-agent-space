@@ -1,15 +1,14 @@
-/**
- * Runtime vocabulary derived from the persisted work-details mode. Renderers
- * and seats select single fields of this policy; none of them compares the
- * mode enum, so adding a mode changes only the table below.
- */
+/** Chat presentation derived from Host-backed detail and collapse timing. */
 
+export type CollapseTiming = 'completion' | 'next-input'
 export type TranscriptViewMode = 'compact' | 'standard' | 'detailed' | 'verbose'
 
 /** Presentation capabilities that one work-details mode enables. */
 export interface ChatPresentationPolicy {
-  /** Mode this policy was derived from; for diagnostics, never for branching in renderers. */
+  /** Preference identity for layout resets and diagnostics; renderers select the capabilities below. */
   readonly mode: TranscriptViewMode
+  /** Saved collapse timing; completion retains the default immediate folding and scrolling. */
+  readonly collapseTiming: CollapseTiming
   /** Whether a normally completed Turn folds its process rows behind the whole-Turn control. */
   readonly foldCompletedTurns: boolean
   /** Collapsible group headers for all Turns, historical Turns only, or no Turns. */
@@ -20,7 +19,7 @@ export interface ChatPresentationPolicy {
   readonly settledReasoningPreview: boolean
 }
 
-const POLICIES: Readonly<Record<TranscriptViewMode, ChatPresentationPolicy>> = {
+const POLICIES: Readonly<Record<TranscriptViewMode, Omit<ChatPresentationPolicy, 'collapseTiming'>>> = {
   compact: {
     mode: 'compact',
     foldCompletedTurns: true,
@@ -51,13 +50,30 @@ const POLICIES: Readonly<Record<TranscriptViewMode, ChatPresentationPolicy>> = {
   },
 }
 
+function withTiming(collapseTiming: CollapseTiming): Readonly<Record<TranscriptViewMode, ChatPresentationPolicy>> {
+  return {
+    compact: { ...POLICIES.compact, collapseTiming },
+    standard: { ...POLICIES.standard, collapseTiming },
+    detailed: { ...POLICIES.detailed, collapseTiming },
+    verbose: { ...POLICIES.verbose, collapseTiming },
+  }
+}
+
+const TIMING_POLICIES = {
+  completion: withTiming('completion'),
+  'next-input': withTiming('next-input'),
+}
+
 /**
- * Resolve the policy constant for one mode. The same mode always yields the
- * same object, so selectors over a policy see stable identities.
+ * Resolve a stable policy for one detail mode and collapse timing.
  * @param mode - persisted work-details mode.
- * @returns the mode's presentation policy.
+ * @param collapseTiming - persisted timing; defaults to immediate completion folding.
+ * @returns the same policy object for the same pair of choices.
  */
-export function presentationPolicyFor(mode: TranscriptViewMode): ChatPresentationPolicy {
-  return POLICIES[mode]
+export function presentationPolicyFor(
+  mode: TranscriptViewMode,
+  collapseTiming: CollapseTiming = 'completion',
+): ChatPresentationPolicy {
+  return TIMING_POLICIES[collapseTiming][mode]
 }
 

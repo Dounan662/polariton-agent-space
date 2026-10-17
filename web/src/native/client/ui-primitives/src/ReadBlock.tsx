@@ -3,8 +3,8 @@ import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type CSSP
 import clsx from 'clsx'
 import { FoldToggle } from './FoldToggle.tsx'
 import { writeClipboard } from '../../../../ui/clipboard.ts'
-import { CodeToolbar, type CodeToolbarLabels } from './CodeToolbar.tsx'
-import cardCss from './CodeCard.module.css'
+import { CodeToolbar, type CodeToolbarLabels } from '../../../../ui/CodeToolbar.tsx'
+import cardCss from '../../../../ui/CodeCard.module.css'
 import {
   grammarLoadCount,
   highlightLines,

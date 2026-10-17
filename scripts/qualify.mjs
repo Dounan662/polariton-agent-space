@@ -1,4 +1,5 @@
 import {nativeTurn} from './native-turn.mjs';
+import {requireRelease} from '../harness/release.ts';
 import {loadConfig,CampaignConfig,QualificationConfig} from '../src/config.ts';
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -19,7 +20,8 @@ const run = resolve(root, '.local/qualification', new Date().toISOString().repla
 const workspace = resolve(run, 'workspace');
 await mkdir(workspace, { recursive: true });
 execFileSync('git', ['init', '--quiet', workspace]);
-const report = { version: '0.2.0-rc.2', checks: [] };
+const release = await requireRelease();
+const report = { version: release.dependencies['node_modules/@deepseek-ai/dsh'].version, checks: [] };
 const harnesses = [];
 const live = process.argv.includes('--live');
 if (live && !process.env.DEEPSEEK_API_KEY?.trim()) throw new Error('Set DEEPSEEK_API_KEY in the ignored V5 .env file before live qualification');
@@ -63,7 +65,7 @@ try {
     turns.catch(() => {});
     await Promise.race([firstTool, turns.then(() => { throw new Error('Turns ended before a steering boundary'); })]);
     const steeringId = 'qualification-steer-1';
-    const steering = await h.message(one.sessionId, steeringId, [{type:'text',text:'Additional guidance for this same turn: before finishing, also write guided.txt containing guided. Do not delegate.'}]);
+    const steering = await h.message(one.sessionId, steeringId, [{type:'text',text:'Additional guidance for this same turn: before finishing, also write guided.txt containing guided. Do not delegate.'}], {kind:'human'});
     const results = await turns;
     assert(results.every(value => value.reason.kind === 'completed'), JSON.stringify(results));
     assert.equal((await readFile(resolve(workspace, 'one.txt'), 'utf8')).trim(), 'one');

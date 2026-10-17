@@ -6,9 +6,9 @@ its visible attribution. These dependencies keep their own licenses.
 
 The browser includes an adaptation of DeepSeek Harness conversation, trajectory,
 Markdown/math, icons, syntax highlighting, and usage presentation. Its primary
-baseline is DSH **0.2.0-rc.2**, revision
-`639ed015397290b3745d163aafe02ffee4aa3f84`. Foundational files that were not refreshed
-retain revision `0d1f50007f9bca3f52b06e1c3074fa14d5fb0720` in their per-file records.
+baseline is DSH **0.2.1-rc.2**, revision
+`687f282e8625c6b8d11ff58211a90524be2e4317`. All 244 attributed source entries
+record this reviewed revision, including retained local adaptations.
 
 The [native presentation notes](../web/src/native/README.md) describe the integration.
 [ORIGIN.json](../web/src/native/ORIGIN.json) records copied source paths, upstream

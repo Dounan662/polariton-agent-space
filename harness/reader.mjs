@@ -5,7 +5,7 @@ import {SessionProjectionRegistry} from '@deepseek-ai/dsh-session-projection';
 import {TokenMeter} from '@deepseek-ai/dsh-token-meter';
 import * as SessionStats from '@deepseek-ai/dsh-session-stats';
 import {sessionMetrics} from './metrics.ts';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 
 // Execution-free persistence and projection reader. No agent, loop, tools or provider is mounted.
 const ctx = new Context();

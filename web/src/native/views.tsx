@@ -2,7 +2,7 @@ import '../ui/native-base.css';
 import '../ui/native-gradient-shadow-text.css';
 import '../ui/native-design-platform.css';
 import '../ui/native-focus.css';
-import {StatsPills} from './client/ui-chat/src/client/chat/StatsPills.tsx';
+import {ActivityPill,UsagePill} from './client/ui-chat/src/client/chat/StatsPills.tsx';
 import {ContextMeter} from './client/ui-conversation/src/client/skeleton/ContextMeter.tsx';
 import {metricsTranslate} from './metrics.ts';
 import React,{memo,useCallback,useMemo,useRef,useState,useSyncExternalStore} from 'react';
@@ -86,7 +86,7 @@ export function SessionStatistics({observation}:{observation:WorkerObservation})
  const current=source(observation);
  useSyncExternalStore(current.subscribe,current.getSnapshot);
  const metrics=current.metrics;
- return metrics?<div className="session-statistics"><StatsPills metrics={metrics} t={metricsTranslate}/><ContextMeter metrics={metrics} t={metricsTranslate}/></div>:null;
+ return metrics?<div className="session-statistics"><ActivityPill metrics={metrics} t={metricsTranslate}/><UsagePill metrics={metrics} t={metricsTranslate}/><ContextMeter metrics={metrics} t={metricsTranslate}/></div>:null;
 }
 
 /** Inspection never drops unknown records or allocates rendered copies of every

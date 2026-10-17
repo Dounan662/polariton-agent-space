@@ -1,6 +1,6 @@
 // Shared time-label helpers for user/assistant IconActions rows.
 
-import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
+type Translate<Key extends string> = (key: Key, values?: Record<string, string | number>) => string
 
 /** The date-template share of the conversation dictionary the clock consumes. */
 export type ClockTranslate = Translate<'clock.md' | 'clock.ymd'>

@@ -1,6 +1,6 @@
 {
   "provider": "deepseek-official",
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-flash",
   "maxRequests": 30,
   "maxOutputTokens": 4096,
   "maxLiveMs": 1200000,

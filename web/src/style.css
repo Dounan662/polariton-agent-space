@@ -520,7 +520,7 @@ dialog::backdrop { background:rgb(0 0 0 / 25%); }
 
 /* The virtualizer owns geometry; browser scroll anchoring must not also compensate. */
 .conversation-viewport{position:relative;display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
-.conversation-viewport .history{container-type:inline-size;overflow-anchor:none;scroll-behavior:auto;padding-block:0}
+.conversation-viewport .history{--code-block-header-position:static;container-type:inline-size;overflow-anchor:none;scroll-behavior:auto;padding-block:0}
 .conversation-rows{position:relative;width:100%}
 .conversation-row{position:absolute;top:0;left:0;width:100%;display:flow-root}
 .history-status{flex:none;min-height:22px;text-align:center;font-size:10px;color:var(--text-secondary)}

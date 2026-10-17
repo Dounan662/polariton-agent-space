@@ -2,7 +2,8 @@ import {chatPresentationConfig} from '../../../../../../presentation-config.ts'
 /** Pure diff-card derivation from raw file-mutation calls and result metadata. @module */
 import type { DiffBlockProps, DiffHunk } from '../../../../../../chat-primitives.tsx'
 import type { ToolCallBlock } from './tool-call-model.ts'
-import { parsedToolCall, validEscalationFields } from './raw-tool-call.ts'
+import { parsedToolCall } from './raw-tool-call.ts'
+import { recordedAbsolutePath } from './recorded-path.ts'
 
 /** Room for a path, one removed/added pair, and three context lines on each side. */
 export const CHAT_DIFF_MAX_LINES = chatPresentationConfig.diffPreviewLines
@@ -67,7 +68,6 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
   }
   const { file_path: path } = parsed.args
   if (typeof path !== 'string' || path.trim() === '') return null
-  if (!validEscalationFields(parsed.args)) return null
   if (parsed.name === 'write') {
     const { content } = parsed.args
     return typeof content === 'string'
@@ -109,5 +109,6 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
   if (applied === null || applied === 'empty') {
     return intended.tool === 'write' ? { card: { diffs: [intended.diff] } } : null
   }
-  return { card: { diffs: applied } }
+  const path = recordedAbsolutePath(block.meta, 'path')
+  return { card: { diffs: applied.map(diff => diff.path === path ? { ...diff, path: intended.diff.path } : diff) } }
 }

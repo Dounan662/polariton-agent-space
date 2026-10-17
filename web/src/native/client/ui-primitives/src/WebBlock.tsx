@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { MarkdownText, type MarkdownLabels } from '../../../../ui/markdown/MarkdownText.tsx'
-import {IconGlobeOutline14} from '../../../../ui/icons/index.tsx'
+import {IconGlobeOutlineRegular} from '../../../../ui/icons/index.tsx'
 import css from './WebBlock.module.css'
 
 /**
@@ -112,7 +112,7 @@ function SafeLink({ url, label, className }: { url: string; label: string; class
   if (href === undefined) return <span className={className}>{label}</span>
   return (
     <a className={className} href={href} target="_blank" rel="noopener noreferrer">
-      <IconGlobeOutline14 className={css.linkIcon} />
+      <IconGlobeOutlineRegular className={css.linkIcon} />
       {label}
     </a>
   )

@@ -3,7 +3,7 @@ const ICON_REGULAR_STROKE=1
 import type { IconProps } from '../../../../ui/icons/props.ts'
 import {
   BrowseOutlineArtwork, ChatLinesOutlineArtwork, FolderCloseArtwork,
-} from './icons/shared-artwork.tsx'
+} from '../../../../ui/icons/shared-artwork.tsx'
 
 /** Reference domains with distinct composer and transcript glyphs. */
 export type ReferenceIconKind = 'session' | 'file' | 'folder'

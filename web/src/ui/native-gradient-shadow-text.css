@@ -1,11 +1,21 @@
-/* Used token closure from DSH 0.2.0-rc.2; component rules stay local. */
+/* Used token closure from DSH 0.2.1-rc.2; component rules stay local. */
 body {
+  --dsh-code-font-delta: calc(var(--dsh-code-font-size, 11px) - 11px);
+  --dsh-content-font-size-secondary: min(calc(var(--dsh-content-font-size, 14px) - 1px), max(13px, calc(var(--dsh-content-font-size, 14px) - 2px)));
+  --dsh-content-font-delta-secondary: calc(var(--dsh-content-font-size-secondary) - 13px);
+  --dsw-font-markdown-base: var(--dsh-content-font-size, 14px) / calc(24px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  --dsw-font-markdown-base-strong: 600 var(--dsh-content-font-size, 14px) / calc(24px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  /* Polariton's opaque neutral panels own elevation; native surfaces share it. */
+  --dsw-elevation-prominent: var(--shadow-menu);
+  --dsw-shadow-lv3: var(--shadow-menu);
+  --dsw-mask-blur: none;
+  --dsw-menu-backdrop-filter: none;
   --dsh-content-font-delta: calc(var(--dsh-content-font-size, 14px) - 14px);
   --dsw-elevation-panel: var(--dsw-elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.03), 0 0 16px 0 rgba(0, 0, 0, 0.02);
   --dsw-elevation-stroke: 0 0 0 0.5px var(--dsw-elevation-stroke-color);
-  --dsw-font-markdown-code: 12px/19px var(--ds-font-family-code);
-  --dsw-font-markdown-code-block: 11px/19px var(--ds-font-family-code);
-  --dsw-font-markdown-code-block-small: 11px/16px var(--ds-font-family-code);
+  --dsw-font-markdown-code: calc(12px + var(--dsh-code-font-delta)) / calc(19px + var(--dsh-code-font-delta)) var(--ds-font-family-code);
+  --dsw-font-markdown-code-block: var(--dsh-code-font-size, 11px) / calc(19px + var(--dsh-code-font-delta)) var(--ds-font-family-code);
+  --dsw-font-markdown-code-block-small: var(--dsh-code-font-size, 11px) / calc(16px + var(--dsh-code-font-delta)) var(--ds-font-family-code);
   --dsw-font-markdown-code-font-family: var(--ds-font-family-code);
   --dsw-font-markdown-h1: 700 calc(21px + var(--dsh-content-font-delta)) / calc(30px + var(--dsh-content-font-delta)) var(--dsw-font-family);
   --dsw-font-markdown-h2: 700 calc(19px + var(--dsh-content-font-delta)) / calc(28px + var(--dsh-content-font-delta)) var(--dsw-font-family);

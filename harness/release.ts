@@ -20,17 +20,26 @@ const Release=z.object({
 }).strict();
 
 /** Derive provenance from owned release inputs. Qualification claims are explicit
- * reviewed evidence; package versions cannot establish behavioral compatibility. */
+ * reviewed evidence; package versions cannot establish behavioral compatibility.
+ * Runtime, development contracts and copied presentation must select one release. */
 export async function releaseInputs(directory=root){
   const [packageBytes,lockBytes,originBytes,qualificationBytes]=await Promise.all(['package.json','package-lock.json','web/src/native/ORIGIN.json','harness/qualification.json'].map(path=>readFile(join(directory,path))));
-  const pkg=z.object({version:z.string(),dependencies:z.record(z.string(),z.string())}).parse(JSON.parse(packageBytes.toString()));
+  const pkg=z.object({version:z.string(),dependencies:z.record(z.string(),z.string()),devDependencies:z.record(z.string(),z.string())}).parse(JSON.parse(packageBytes.toString()));
   const lock=z.object({packages:z.record(z.string(),z.object({version:z.string().optional(),integrity:z.string().optional(),os:z.array(z.string()).optional(),cpu:z.array(z.string()).optional(),optional:z.boolean().optional()}).passthrough())}).parse(JSON.parse(lockBytes.toString()));
-  const origin=z.object({revision:z.string()}).parse(JSON.parse(originBytes.toString()));
+  const origin=z.object({revision:z.string(),release:z.string()}).parse(JSON.parse(originBytes.toString()));
+  const harnessVersion=pkg.dependencies['@deepseek-ai/dsh'];
+  if(!harnessVersion||!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(harnessVersion))throw new Error('DSH execution owner must have an exact release pin');
+  if(origin.release!==harnessVersion)throw new Error('Presentation and runtime must select the same DSH release');
+  for(const [name,version]of Object.entries({...pkg.dependencies,...pkg.devDependencies})){
+    if(!/^@deepseek-ai\/dsh(?:-|$)/.test(name))continue;
+    if(version!==harnessVersion||lock.packages[`node_modules/${name}`]?.version!==harnessVersion)throw new Error(`Mixed DSH release selection: ${name}`);
+  }
   const dependencies:Record<string,z.infer<typeof Dependency>>={};
   for(const [path,entry]of Object.entries(lock.packages).sort(([a],[b])=>a.localeCompare(b))){
     const name=path.slice(path.lastIndexOf('node_modules/')+'node_modules/'.length);
     if(!pkg.dependencies[name]&&!name.startsWith('@deepseek-ai/')&&!name.startsWith('@modelcontextprotocol/')&&!name.startsWith('@img/'))continue;
     if(!entry.version||!entry.integrity)throw new Error(`Incomplete locked dependency provenance: ${path}`);
+    if(/^@deepseek-ai\/dsh(?:-|$)/.test(name)&&entry.version!==harnessVersion)throw new Error(`Mixed DSH release selection: ${path}`);
     dependencies[path]={version:entry.version,integrity:entry.integrity,...(entry.os?{os:entry.os}:{}),...(entry.cpu?{cpu:entry.cpu}:{}),...(entry.optional?{optional:true}:{})};
   }
   if(!dependencies['node_modules/@deepseek-ai/dsh'])throw new Error('Release has no locked DSH execution owner');

@@ -26,6 +26,9 @@ test('fresh setup, replacement, removal and restart use one private store withou
   const {directory,settings}=await fixture(t);
   const initial=await settings.snapshot();
   assert.equal(initial.defaultRoute,null);assert.deepEqual(initial.choices,[]);
+  const offered=initial.catalog.find(provider=>provider.id==='deepseek-official')!;
+  assert(offered.credential);assert.equal(offered.credential.configured,false);
+  assert(offered.models.some(model=>model.id==='deepseek-flash'),'Unconfigured setup retains the upstream model catalog');
   const first=await settings.save({id:'deepseek-official',kind:'builtin',apiKey:'sentinel-first-key'});
   assert.equal(first.providers[0].credential.source,'file');
   assert.equal(first.providers[0].configured,true);
@@ -73,16 +76,29 @@ test('unrelated concurrent edits survive and stale browser revisions reject',asy
   assert.deepEqual((await settings.snapshot()).providers.map(p=>p.id).sort(),['deepseek-official','openai']);
 });
 
-test('explicit environment overrides are visible and reject ineffective edits',async t=>{
+test('saved credentials override environment fallbacks and clearing reveals the fallback',async t=>{
   const previous=process.env.ANTHROPIC_API_KEY;process.env.ANTHROPIC_API_KEY='sentinel-environment-key';
   t.after(()=>{if(previous===undefined)delete process.env.ANTHROPIC_API_KEY;else process.env.ANTHROPIC_API_KEY=previous;});
   const {settings}=await fixture(t);
-  assert.deepEqual((await settings.snapshot()).catalog.find(p=>p.id==='anthropic')?.credential,{configured:true,source:'env',writable:false});
-  const saved=await settings.save({id:'anthropic',kind:'builtin'});
-  assert.deepEqual(saved.providers[0].credential,{configured:true,source:'env',writable:false});
-  await assert.rejects(settings.save({id:'anthropic',kind:'builtin',apiKey:'sentinel-replacement'}),hasCode('READ_ONLY_CREDENTIAL'));
-  await assert.rejects(settings.remove('anthropic'),hasCode('READ_ONLY_CREDENTIAL'));
-  assert.ok(!JSON.stringify(saved).includes('sentinel-environment-key'));
+  assert.deepEqual((await settings.snapshot()).catalog.find(p=>p.id==='anthropic')?.credential,{configured:true,source:'env',writable:true});
+  const inherited=await settings.save({id:'anthropic',kind:'builtin'});
+  assert.deepEqual(inherited.providers[0].credential,{configured:true,source:'env',writable:true});
+  const saved=await settings.save({id:'anthropic',kind:'builtin',apiKey:'sentinel-replacement'});
+  assert.deepEqual(saved.providers[0].credential,{configured:true,source:'file',writable:true});
+  const active=new Context();t.after(()=>active.fiber.dispose());
+  await settings.withRuntime(async runtime=>{await active.plugin(LocalCredentials,{path:runtime.credentialPath,watch:false});});
+  assert.equal((await active.credentials.resolve(credentialRef('ANTHROPIC_API_KEY')))?.value,'sentinel-replacement');
+  const cleared=await settings.save({id:'anthropic',kind:'builtin',removeKey:true});
+  assert.deepEqual(cleared.providers[0].credential,{configured:true,source:'env',writable:true});
+  assert.equal(cleared.providers[0].configured,true);
+  assert(cleared.choices.length>0);
+  const fallback=new Context();t.after(()=>fallback.fiber.dispose());
+  await settings.withRuntime(async runtime=>{await fallback.plugin(LocalCredentials,{path:runtime.credentialPath,watch:false});});
+  assert.equal((await fallback.credentials.resolve(credentialRef('ANTHROPIC_API_KEY')))?.value,'sentinel-environment-key');
+  assert.equal(process.env.ANTHROPIC_API_KEY,'sentinel-environment-key');
+  assert.ok(!JSON.stringify([saved,cleared]).includes('sentinel-'));
+  await settings.remove('anthropic');
+  assert.deepEqual((await settings.snapshot()).choices,[]);
 });
 
 test('worker credential snapshots remain frozen while future activations see replacement',async t=>{

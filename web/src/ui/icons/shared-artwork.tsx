@@ -1,9 +1,21 @@
-import type { IconProps } from '../../../../../ui/icons/props.ts'
+import type { IconProps } from './props.ts'
 
 interface WeightedArtworkProps extends IconProps {
   strokeWidth: number
 }
 
+/**
+ * Render new-conversation geometry — the bubble around a plus — for product icons.
+ * @param props - Size, optional CSS class, and inherited stroke width.
+ * @returns The decorative SVG artwork.
+ */
+export const NewChatOutlineArtwork = ({ size = 16, className, strokeWidth }: WeightedArtworkProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" strokeWidth={strokeWidth}>
+    <path d="M2.37091 11.2501C1.58745 9.89288 1.32067 8.29835 1.61969 6.76006C1.91872 5.22177 2.76342 3.8433 3.99826 2.87846C5.2331 1.91362 6.77494 1.42737 8.33988 1.50925C9.90482 1.59113 11.3875 2.23562 12.5149 3.32406C13.6425 4.41269 14.3387 5.87206 14.4754 7.4334C14.612 8.99474 14.18 10.5529 13.2587 11.8209C12.3375 13.0888 10.9891 13.9813 9.46194 14.3337C8.18691 14.628 6.85895 14.5294 5.64989 14.0605C5.1712 13.8748 4.76962 13.4932 4.26534 13.3967C3.67413 13.2835 2.95257 13.5598 2.03794 14.3337" stroke="currentColor" />
+    <path d="M8 5V11" stroke="currentColor" />
+    <path d="M5 8H11" stroke="currentColor" />
+  </svg>
+)
 
 /**
  * Render shared conversation geometry — the chat bubble around two text
@@ -19,7 +31,32 @@ export const ChatLinesOutlineArtwork = ({ size = 16, className, strokeWidth }: W
   </svg>
 )
 
+/**
+ * Render shared globe geometry for product and link icons.
+ * @param props - Size, optional CSS class, and inherited stroke width.
+ * @returns The decorative SVG artwork.
+ */
+export const GlobeOutlineArtwork = ({ size = 14, className, strokeWidth }: WeightedArtworkProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" strokeWidth={strokeWidth}>
+    <path d="M7.99986 14.0887C11.3626 14.0887 14.0886 11.3627 14.0886 7.99998C14.0886 4.63727 11.3626 1.91125 7.99986 1.91125C4.63715 1.91125 1.91113 4.63727 1.91113 7.99998C1.91113 11.3627 4.63715 14.0887 7.99986 14.0887Z" stroke="currentColor" />
+    <path d="M2.34619 8H13.6538" stroke="currentColor" strokeLinecap="square" />
+    <path d="M7.99976 14.0889C9.23509 14.0889 10.1743 11.3629 10.1743 8.00006C10.1743 4.63739 9.23509 1.91138 7.99976 1.91138" stroke="currentColor" />
+    <path d="M7.99973 14.0889C6.76445 14.0889 5.8252 11.3629 5.8252 8.00006C5.8252 4.63739 6.76445 1.91138 7.99973 1.91138" stroke="currentColor" />
+  </svg>
+)
 
+/**
+ * Render shared code-bracket geometry for product and link icons.
+ * @param props - Size, optional CSS class, and inherited stroke width.
+ * @returns The decorative SVG artwork.
+ */
+export const CodeBracketsArtwork = ({ size = 14, className, strokeWidth }: WeightedArtworkProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" strokeWidth={strokeWidth}>
+    <path d="M4.67398 4.25061L1.36094 7.86484C1.29085 7.9413 1.29085 8.05866 1.36094 8.13513L4.67398 11.7494" stroke="currentColor" />
+    <path d="M11.3262 4.25061L14.6392 7.86484C14.7093 7.9413 14.7093 8.05866 14.6392 8.13513L11.3262 11.7494" stroke="currentColor" />
+    <path d="M9.56222 3.62573L6.43774 12.3743" stroke="currentColor" />
+  </svg>
+)
 
 /**
  * Render shared document-browse geometry for product and reference icons.

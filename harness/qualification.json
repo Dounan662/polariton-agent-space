@@ -4,20 +4,5 @@
   "readableFormats": [
     4
   ],
-  "profiles": [
-    {
-      "host": "macos-arm64",
-      "node": "24.11.0",
-      "evidence": [
-        "docs/COMPATIBILITY.md"
-      ]
-    },
-    {
-      "host": "ubuntu-26.04-amd64",
-      "node": "24.21.0",
-      "evidence": [
-        "docs/COMPATIBILITY.md"
-      ]
-    }
-  ]
+  "profiles": []
 }

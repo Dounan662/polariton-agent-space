@@ -7,7 +7,7 @@ console.log('Browser',browser.version());
 try {
 for(const total of [2096,16000]) {
 const page=await browser.newPage({viewport:{width:1000,height:800},reducedMotion:'reduce'});
-const errors=[];page.on('pageerror',e=>errors.push(e.stack));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+const errors=[];page.on('pageerror',e=>errors.push(e.stack));page.on('console',m=>{if(m.type()==='error')errors.push(`${m.text()} (${m.location().url})`);});
 const settle=()=>page.waitForTimeout(350);
 const state=()=>page.evaluate(()=>{const e=document.querySelector('.history'),top=e.getBoundingClientRect().top;const rows=[...document.querySelectorAll('[data-chat-row]')];const anchor=rows.find(r=>r.getBoundingClientRect().bottom>top);return {mounted:rows.length,scroll:e.scrollTop,bottom:e.scrollHeight-e.scrollTop-e.clientHeight,requests:fixture.requests,sourceError:fixture.source.error,anchor:anchor&&{key:anchor.dataset.chatRow,offset:anchor.getBoundingClientRect().top-top}};});
 await page.goto(`${process.env.POLARITON_CHAT_FIXTURE_URL??'http://127.0.0.1:51821/tests/fixtures/adr021/'}?events=${total}`);await page.waitForSelector('[data-chat-row]');await settle();
@@ -96,15 +96,19 @@ await page.evaluate(()=>fixture.fail=false);await page.getByRole('button',{name:
 assert.equal(await page.evaluate(()=>fixture.source.error),'');assert.equal(await page.evaluate(()=>fixture.maxInFlight),1);
 console.log('explicit read recovery passed');
 // Cold restoration finds a bookmark outside the initial page without a click.
-await page.evaluate(()=>localStorage.setItem('polariton.reading.adr021',JSON.stringify({key:'13:input-messageuser-1906',offset:-20,atBottom:false})));
-// pagehide normally persists the actual viewport; leave through a new page with the shared storage instead.
-const restoredPage=await page.context().newPage();await restoredPage.goto(`${process.env.POLARITON_CHAT_FIXTURE_URL??'http://127.0.0.1:51821/tests/fixtures/adr021/'}?events=2096`);
+// Close the previous reader before seeding the next page: its visibility and
+// delayed persistence otherwise race a synthetic bookmark in shared storage.
+await page.close();
+const restoredPage=await recoveryContext.newPage();
+await restoredPage.addInitScript(()=>localStorage.setItem('polariton.reading.adr021',JSON.stringify({key:'13:input-messageuser-1906',offset:-20,atBottom:false})));
+await restoredPage.goto(`${process.env.POLARITON_CHAT_FIXTURE_URL??'http://127.0.0.1:51821/tests/fixtures/adr021/'}?events=2096`);
 await restoredPage.waitForSelector('[data-chat-row="13:input-messageuser-1906"]');await restoredPage.waitForTimeout(350);
 const restoreResult=await restoredPage.evaluate(()=>{const host=document.querySelector('.history'),row=document.querySelector('[data-chat-row="13:input-messageuser-1906"]');return {offset:row.getBoundingClientRect().top-host.getBoundingClientRect().top,requests:fixture.requests};});
 console.log('cold restore',restoreResult);assert.ok(Math.abs(restoreResult.offset+20)<=2);assert.ok(restoreResult.requests>=1);
 await restoredPage.close();
-await page.evaluate(()=>localStorage.setItem('polariton.reading.adr021',JSON.stringify({key:'13:input-messageuser-10',offset:-20,atBottom:false})));
-const cancelled=await recoveryContext.newPage();await cancelled.goto(`${process.env.POLARITON_CHAT_FIXTURE_URL??'http://127.0.0.1:51821/tests/fixtures/adr021/'}?events=2096&hold=1`);
+const cancelled=await recoveryContext.newPage();
+await cancelled.addInitScript(()=>localStorage.setItem('polariton.reading.adr021',JSON.stringify({key:'13:input-messageuser-10',offset:-20,atBottom:false})));
+await cancelled.goto(`${process.env.POLARITON_CHAT_FIXTURE_URL??'http://127.0.0.1:51821/tests/fixtures/adr021/'}?events=2096&hold=1`);
 await cancelled.waitForFunction(()=>fixture.gate);await cancelled.locator('.history').focus();await cancelled.keyboard.press('End');await cancelled.waitForTimeout(350);
 await cancelled.evaluate(()=>{fixture.hold=false;fixture.gate();fixture.gate=null;});await cancelled.waitForTimeout(500);
 assert.equal(await cancelled.evaluate(()=>fixture.requests),1);

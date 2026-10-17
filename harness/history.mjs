@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 
 /** Read DSH logical records without mounting agent registry, loop, tools or provider. */
 export async function readHistory(root, sessionId, { offset = 0, limit = 100 } = {}) {

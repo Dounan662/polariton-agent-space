@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import css from './StateDot.module.css'
-import { IconCheckOutline16 } from './icons/index.tsx'
+import { IconCheckOutlineRegular } from './icons/index.tsx'
 
 /**
  * State semantic: green done / amber user-attention / tertiary-grey loading /
@@ -10,12 +10,23 @@ export type StateDotState = 'done' | 'warning' | 'ongoing' | 'error' | 'idle'
 
 /**
  * Pin the loader's CSS animations to document time zero. A CSS animation starts
- * when its element is inserted, so loaders mounted at different moments rotate
- * out of phase; one shared start time keeps every visible loader in step.
+ * when its element is inserted and restarts when the element is moved or shown
+ * again, so loaders started at different moments rotate out of phase; one shared
+ * start time keeps every visible loader in step. Mount pins the first start; the
+ * element's own `animationstart` listener pins each restart.
  * @param element - the mounted loader, or null on unmount.
  */
 function syncSpinner(element: SVGSVGElement | null): void {
   if (element === null) return
+  pinSpinner(element)
+  element.addEventListener('animationstart', () => { pinSpinner(element) })
+}
+
+/**
+ * Set every CSS animation in the loader's subtree to start at document time zero.
+ * @param element - the mounted loader.
+ */
+function pinSpinner(element: SVGSVGElement): void {
   // jsdom (the unit lane) implements no Web Animations despite lib.dom's
   // non-optional typing; the optional call leaves that lane unsynced.
   const spinner = element as { getAnimations?: SVGSVGElement['getAnimations'] }
@@ -61,6 +72,6 @@ export function StateDot({ state, size, className, appearance = 'dot' }: {
       data-state={state}
       style={{ width: edge, height: edge }}
       aria-hidden="true"
-    >{appearance === 'step' && state === 'done' && <IconCheckOutline16 size={edge - 2} />}</span>
+    >{appearance === 'step' && state === 'done' && <IconCheckOutlineRegular size={edge - 2} />}</span>
   )
 }

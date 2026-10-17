@@ -16,7 +16,8 @@ import {ResidencyReserveInput,ResidencyTokenInput } from './settings.ts';
 
 const Frame=z.object({id:z.string().optional(),method:z.string().optional(),params:z.record(z.string(),z.unknown()).optional(),result:z.unknown().optional(),error:z.object({message:z.string()}).optional()});
 
-export const inject = ['agents', 'sessionPersistence', 'llm', 'systemPrompt', 'shellEnv', 'jobs', 'subprocess', 'sessionProjections', 'tokenMeter'];
+// Discovery is credential-gated upstream; readiness must include its credential snapshot.
+export const inject = ['agents', 'sessionPersistence', 'llm', 'systemPrompt', 'shellEnv', 'jobs', 'subprocess', 'sessionProjections', 'tokenMeter', 'credentials'];
 
 /** Private inherited-pipe control of already-live agents; never creates an agent. */
 /** @param {import('@deepseek-ai/cordis').Context} ctx */
@@ -96,8 +97,8 @@ export async function apply(ctx) {
       // DSH owns route discovery. Reading this catalog never creates an Agent or a session.
       if(frame.method==='models'){
         const provider=frame.params?.provider;
-        if(typeof provider!=='string'||!ctx.llm.listProviders().some(value=>value.id===provider))throw new Error('Unknown model provider');
-        const models=await ctx.llm.listModels(provider);
+        if(typeof provider!=='string')throw new Error('Invalid model provider');
+        const models=ctx.llm.listProviders().some(value=>value.id===provider)?await ctx.llm.listModels(provider):[];
         send({id:frame.id,result:models.map(model=>({value:JSON.stringify([provider,model.id]),name:model.name,image:model.inputModalities?.includes('image')===true}))});
         return;
       }

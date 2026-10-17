@@ -25,6 +25,8 @@ import Plan from '@deepseek-ai/dsh-plan-mode';
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy';
 import Approval from '@deepseek-ai/dsh-user-approval';
 import FileSystem from '@deepseek-ai/dsh-fs-local';
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory';
+import * as Persistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs';
 import * as ToolSearch from '@deepseek-ai/dsh-tool-fs-search';
 import * as ToolBash from '@deepseek-ai/dsh-tool-bash';
@@ -42,19 +44,21 @@ const plan=base.match(/    - id: plan-mode\n[\s\S]*?        section: \|\n([\s\S]
 
 /** Compare actual upstream contributions at their public assembly boundary. */
 async function native(t,{polariton=false,tools=true}={}){
- const ctx=new Context(),handles=[];
- t.after(async()=>{for(const handle of handles)await handle.dispose();await ctx.fiber.dispose();});
+ const ctx=new Context(),handles=[],workspace=process.cwd();
+ const storage=await mkdtemp(join(tmpdir(),'polariton-prompt-sessions-'));
+ t.after(async()=>{for(const handle of handles)await handle.dispose();await ctx.fiber.dispose();await rm(storage,{recursive:true,force:true});});
  const patches=await compose({...await loadConfig(),verification:true,workerIdentity:{workerId:'worker-fixture',nodeId:'node-fixture',projectId:'project-fixture'},workerInstructions:'Literal {{worker-specialization}}'},'/workspace/{{literal}}');
  const config=patches.find(row=>row.id==='system-prompt').config;
  await ctx.plugin(SystemPrompt,polariton?config:{});
- for(const plugin of [Tools,Agents,Sessions,Projections,Llm,AgentLoop,Goals,Jobs,Subagents,Spawn,Workflow])await ctx.plugin(plugin,{});
+ for(const plugin of [Tools,Agents,Sessions,Projections,Llm,AgentLoop,Goals,Jobs,FileSystem,WorkingDirectory,Subagents,Spawn,Workflow])await ctx.plugin(plugin,{});
+ await ctx.plugin(Persistence,{root:storage});
  await ctx.plugin(Plan,{section:plan});
- await ctx.plugin(SandboxPolicy,{mode:'workspace-write',workspaceRoot:'/workspace'});
+ await ctx.plugin(SandboxPolicy,{mode:'workspace-write',workspaceRoot:workspace});
  await ctx.plugin(Approval,{policy:'ask'});
- if(tools){await ctx.plugin(FileSystem,{});await ctx.plugin(Subprocess,{});await ctx.plugin(Shell,{});await ctx.plugin(ShellEnv,{dshHome:'/fixture-home'});await ctx.plugin(ToolFs,{});await ctx.plugin(ToolSearch,{sampleOverCapGlobResults:false});await ctx.plugin(ToolBash,{});await ctx.plugin(ToolGoal,{});await ctx.plugin(ToolJobs,{waitTimeoutMs:30000,maxWaitTimeoutMs:600000,maxConsecutiveWakes:3});await ctx.plugin(ToolSubagent,{provider:'spawn',backgroundMode:'continuable'});await ctx.plugin(ToolWorkflow,{});}
+ if(tools){await ctx.plugin(Subprocess,{});await ctx.plugin(Shell,{});await ctx.plugin(ShellEnv,{dshHome:'/fixture-home'});await ctx.plugin(ToolFs,{});await ctx.plugin(ToolSearch,{sampleOverCapGlobResults:false});await ctx.plugin(ToolBash,{});await ctx.plugin(ToolGoal,{});await ctx.plugin(ToolJobs,{waitTimeoutMs:30000,maxWaitTimeoutMs:600000,maxConsecutiveWakes:3});await ctx.plugin(ToolSubagent,{provider:'spawn'});await ctx.plugin(ToolWorkflow,{});}
  if(polariton){const extra=patches.flatMap(row=>row.insert??[]).find(row=>row.id==='polariton-worker-instructions');await ctx.plugin(Instructions,extra.config);}
- const handle=await ctx.agents.create({sessionId:'same-session',meta:{cwd:'/workspace'},agentOptions:{provider:'controlled',model:'local'}});handles.push(handle);
- return {ctx,agent:handle.agent,config};
+ const handle=await ctx.agents.create({sessionId:'same-session',meta:{cwd:workspace},agentOptions:{provider:'controlled',model:'local'}});handles.push(handle);
+ return {ctx,agent:handle.agent,config,workspace};
 }
 for(const tools of [true,false])test(`Polariton leaves native sections, tools and runtime policies unchanged with native tools ${tools?'available':'unavailable'}`,async t=>{
  const baseline=await native(t,{tools}),polariton=await native(t,{polariton:true,tools});
@@ -103,9 +107,9 @@ test('native child retains Polariton launch placement and same credential grant 
  }
  f.ctx.llm.registerAdapter(['controlled'],new Adapter());
  f.ctx.on('agent/created',async({agent})=>{if(agent===f.agent)return;child=agent;assembly=await agent.ctx.systemPrompt.assemble({agent,scope:agent});environment=f.ctx.shellEnv.collect({agent});},{global:true});
- const result=await f.ctx.tools.execute({callId:'child',name:'subagent',arguments:{description:'Controlled inheritance check',prompt:'Finish',run_in_background:false},agent:f.agent,signal:new AbortController().signal});
+ const result=await f.ctx.tools.execute({callId:'child',name:'subagent',arguments:{description:'Controlled inheritance check',prompt:'Finish'},agent:f.agent,signal:new AbortController().signal});
  assert.equal(result.isError,false,JSON.stringify(result));assert(child);assert.notEqual(child.id,f.agent.id);
- assert.equal(child.session.header.parentSession,f.agent.id);assert.equal(child.session.header.cwd,'/workspace');
+ assert.equal(child.session.header.parentSession,f.agent.id);assert.equal(child.session.header.cwd,f.workspace);
  assert.equal(environment.DSH_SESSION_ID,child.id);assert.equal(environment.DSH_HARNESSCTL_TOKEN,token);
  const text=renderPrompt(assembly);assert(text.includes('worker-fixture'));assert(!text.includes(token));
  assert.match(renderContextSnapshot(assembly),/delegated subagent/);

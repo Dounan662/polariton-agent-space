@@ -24,6 +24,8 @@ for(const applicationFirst of [false,true])test(`installed Polariton skills outr
   const file=join(directory,'SKILL.md'),body=`---\nname: ${name}\ndescription: Project ${name}\n---\n${folder} original ${name} instructions\n`;
   await writeFile(file,body);stale.push([file,body]);
  }
+ // Skill precedence depends on the effective directory, supplied by its owning service.
+ ctx.provide('workingDirectory',{ensure:async(_agent,signal)=>{signal?.throwIfAborted();return root;}});
  for(const plugin of [SystemPrompt,Skills,Tools,Agents,SkillTool])await ctx.plugin(plugin,{});
  if(applicationFirst)await ctx.plugin(ApplicationSkills,{});
  await ctx.plugin(FilesystemSkills,{dshHome:join(root,'user-dsh'),agentsHome:join(root,'user-agents'),watch:false});

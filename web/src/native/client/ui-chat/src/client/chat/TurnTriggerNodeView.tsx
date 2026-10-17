@@ -2,9 +2,9 @@ import {useDisclosure} from './use-disclosure.ts'
 /** An independent, expandable notice explaining a non-human Turn trigger. */
 import { useId, type ComponentType } from 'react'
 import {
-  IconAgentPresetOutline16, IconClockOutline16, IconBranchOutline16,
-  IconChevronDownOutline14, IconContextInjectionOutline16, IconCordisPluginOutline14,
-  IconGoalOutline16, IconGlobeOutline14, IconPaperPlaneOutline14, IconQueueOutline14,
+  IconAgentPresetOutlineRegular, IconClockOutlineRegular, IconBranchOutlineRegular,
+  IconChevronDownOutlineRegular, IconContextInjectionOutlineRegular, IconCordisPluginOutlineRegular,
+  IconGoalOutlineRegular, IconGlobeOutlineRegular, IconPaperPlaneOutlineRegular, IconQueueOutlineRegular,
   type IconProps,
 } from '../../../../../chat-primitives.tsx'
 import type { ChatNodeViewProps } from '../contract/slots.ts'
@@ -14,16 +14,16 @@ import { turnTriggerDetails, type TurnTriggerIcon } from './turn-trigger.ts'
 import css from './TurnTriggerNodeView.module.css'
 
 const TRIGGER_ICONS: Record<TurnTriggerIcon, ComponentType<IconProps>> = {
-  request: IconContextInjectionOutline16,
-  goal: IconGoalOutline16,
-  agent: IconPaperPlaneOutline14,
-  team: IconAgentPresetOutline16,
-  subagent: IconAgentPresetOutline16,
-  github: IconBranchOutline16,
-  webhook: IconGlobeOutline14,
-  schedule: IconClockOutline16,
-  job: IconQueueOutline14,
-  plugin: IconCordisPluginOutline14,
+  request: IconContextInjectionOutlineRegular,
+  goal: IconGoalOutlineRegular,
+  agent: IconPaperPlaneOutlineRegular,
+  team: IconAgentPresetOutlineRegular,
+  subagent: IconAgentPresetOutlineRegular,
+  github: IconBranchOutlineRegular,
+  webhook: IconGlobeOutlineRegular,
+  schedule: IconClockOutlineRegular,
+  job: IconQueueOutlineRegular,
+  plugin: IconCordisPluginOutlineRegular,
 }
 
 /** Render recorded trigger attribution above the whole-Turn disclosure. */
@@ -40,7 +40,7 @@ export function TurnTriggerNodeView({ node, t }: Pick<ChatNodeViewProps<'turn-tr
         <span className={css.icon} aria-hidden><TriggerIcon size={14} /></span>
         <span className={css.title}>{t(details.title)}</span>
         <time className={css.time} dateTime={date.toISOString()}>{time}</time>
-        <IconChevronDownOutline14 size={12} className={open ? css.openChevron : css.chevron} />
+        <IconChevronDownOutlineRegular size={12} className={open ? css.openChevron : css.chevron} />
       </button>
       {open && <div id={bodyId} className={css.body}>
         <p className={css.explanation}>{t('message.trigger.explanation')}</p>

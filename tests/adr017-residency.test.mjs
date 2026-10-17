@@ -19,8 +19,10 @@ import Goals from '@deepseek-ai/dsh-goal';
 import Subagents from '@deepseek-ai/dsh-subagent';
 import * as SpawnSubagent from '@deepseek-ai/dsh-subagent-spawn-in-process';
 import * as SubagentTool from '@deepseek-ai/dsh-tool-subagent';
-import Persistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as Persistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import DynamicPlugins from '@deepseek-ai/dsh-cordis-host-runner';
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory';
+import FileSystem from '@deepseek-ai/dsh-fs-local';
 
 /** Public pinned-DSH lifecycle qualification; the adapter never opens a network connection. */
 async function fixture(t,{omit}={}) {
@@ -181,28 +183,34 @@ test('armed goals block unloading even with no running driver',{timeout:5000},as
 
 });
 
-test('native background subagent tool exposes startup through Jobs and releases its lifecycle blocker at settlement',{timeout:5000},async t=>{
+test('native subagent startup and result delivery retain residency until settlement',{timeout:5000},async t=>{
   const f=await fixture(t),entered=f.hold(),start=f.hold();
+  const directory=await mkdtemp(join(tmpdir(),'polariton-residency-tool-'));
+  t.after(()=>rm(directory,{recursive:true,force:true}));
+  await f.ctx.plugin(Persistence,{root:directory});
   const observer=new Residency(f.ctx,{deadlineMs:5000,requireSchedule:false});
+  await f.ctx.plugin(FileSystem,{});await f.ctx.plugin(WorkingDirectory,{});
   await f.ctx.plugin(Subagents,{});await f.ctx.plugin(SpawnSubagent,{});await f.ctx.plugin(SubagentTool,{provider:'spawn'});
   f.ctx.on('agent/created',async({agent})=>{if(agent.id!=='root'){entered.resolve();await start.promise;}},{global:true});
-  const response=await f.ctx.tools.execute({callId:'native-background',name:'subagent',arguments:{description:'Native child',prompt:'Finish a controlled turn',run_in_background:true},agent:f.root.agent,signal:new AbortController().signal});
-  assert.equal(response.isError,false,JSON.stringify(response));await entered.promise;
-  assert(observer.inspect('root').blockers.some(value=>value.kind==='job'));
+  const settled=Promise.withResolvers();f.ctx.on('subagent/end',()=>settled.resolve(),{global:true});
+  const response=observer.admit(()=>f.ctx.tools.execute({callId:'native-background',name:'subagent',arguments:{description:'Native child',prompt:'Finish a controlled turn'},agent:f.root.agent,signal:new AbortController().signal}));
+  await entered.promise;
+  assert.equal(observer.inspect('root').eligible,false,'Pending child admission cannot be suspended');
   start.resolve();
-  const settled=Promise.withResolvers();f.ctx.jobs.events.subscribe({owners:'all'},event=>{if(event.type==='settled')settled.resolve(event.job);});
-  assert.equal((await settled.promise).status,'completed');
+  assert.equal((await response).isError,false);
+  await settled.promise;await f.root.agent.whenIdle();
   await nextTurn();assert.equal(observer.inspect('root').eligible,true,JSON.stringify(observer.inspect('root')));
 });
 
 test('continuable child disposal stays blocked until its late parent notification is admitted',{timeout:5000},async t=>{
   const f=await fixture(t),directory=await mkdtemp(join(tmpdir(),'polariton-residency-child-'));
   t.after(()=>rm(directory,{recursive:true,force:true}));
-  await f.ctx.plugin(Persistence,{root:directory});await f.ctx.plugin(Subagents,{});await f.ctx.plugin(SpawnSubagent,{});
+  await f.ctx.plugin(Persistence,{root:directory});await f.ctx.plugin(FileSystem,{});await f.ctx.plugin(WorkingDirectory,{});
+  await f.ctx.plugin(Subagents,{});await f.ctx.plugin(SpawnSubagent,{});
   const observer=new Residency(f.ctx,{deadlineMs:5000,requireSchedule:false}),ended=Promise.withResolvers();let atRemoval,atEnd;
   f.ctx.on('agent/disposed',({agent})=>{if(agent.id!=='root')atRemoval=observer.inspect('root');},{global:true});
   f.ctx.on('subagent/end',()=>{atEnd=observer.inspect('root');ended.resolve();},{global:true});
-  await observer.admit(()=>f.ctx.subagents.startContinuable({provider:'spawn',label:'continuable child',request:{parent:f.root.agent,prompt:[{type:'text',text:'Complete this turn'}],maxDepth:3},signal:new AbortController().signal}));
+  await observer.admit(()=>f.ctx.subagents.startActivation({provider:'spawn',delivery:'parent',label:'continuable child',request:{parent:f.root.agent,prompt:[{type:'text',text:'Complete this turn'}],maxDepth:3},signal:new AbortController().signal}));
   await ended.promise;await f.root.agent.whenIdle();
   assert(atRemoval.blockers.some(value=>value.kind==='descendant'),JSON.stringify(atRemoval));
   assert(atEnd.blockers.some(value=>value.kind==='inbox'||value.kind==='running'),JSON.stringify(atEnd));

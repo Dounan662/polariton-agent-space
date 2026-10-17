@@ -38,6 +38,26 @@ test('release preflight rejects unreviewed lock or presentation changes',async t
   await assert.rejects(verifyRelease(root),/release inputs changed/);
 });
 
+test('release generation refuses a runtime-only upgrade with stale copied presentation',async t=>{
+  const {root}=await fixture();t.after(()=>rm(root,{recursive:true,force:true}));
+  const path=join(root,'web/src/native/ORIGIN.json'),origin=JSON.parse(await readFile(path,'utf8'));
+  origin.release='0.0.0';await writeFile(path,JSON.stringify(origin));
+  await assert.rejects(releaseInputs(root),/Presentation and runtime must select the same DSH release/);
+});
+
+test('release generation refuses mismatched development contracts and transitive runtime packages',async t=>{
+  const {root}=await fixture();t.after(()=>rm(root,{recursive:true,force:true}));
+  const path=join(root,'package.json'),pkg=JSON.parse(await readFile(path,'utf8'));
+  const original=await readFile(path);
+  pkg.devDependencies['@deepseek-ai/dsh-agent-loop']='0.0.0';await writeFile(path,JSON.stringify(pkg));
+  await assert.rejects(releaseInputs(root),/Mixed DSH release selection/);
+  await writeFile(path,original);
+  const lockPath=join(root,'package-lock.json'),lock=JSON.parse(await readFile(lockPath,'utf8'));
+  lock.packages['node_modules/nested/node_modules/@deepseek-ai/dsh-session']={version:'0.0.0',integrity:'test'};
+  await writeFile(lockPath,JSON.stringify(lock));
+  await assert.rejects(releaseInputs(root),/Mixed DSH release selection/);
+});
+
 // npm can omit a fallback optional dependency without os/cpu selectors when the
 // native implementation is present. Absence is allowed; a wrong installed version is not.
 test('release preflight permits omitted optional fallbacks but still requires the execution owner',async t=>{

@@ -71,7 +71,9 @@ export class ProviderSettings {
       for(const [id,keyUrl] of Object.entries(links)){
         const entry=directory.find(p=>p.provider===id);
         if(!entry)throw new ProviderSettingsError('CATALOG_UNAVAILABLE','The installed provider catalog is incomplete.');
-        const models=id==='deepseek-official'?await ctx.llm.listModels(id):await ctx.llm.discoverModels('llm-pi-ai',{provider:id});
+        // Setup must offer the declared models before a credential exists. DSH's
+        // live discovery is credential-gated; worker choices are gated below.
+        const models=id==='deepseek-official'?DeepSeek.resolveAdapterOptions({}).models:await ctx.llm.discoverModels('llm-pi-ai',{provider:id});
         service.catalog.push({id,name:id==='openai'?'OpenAI':id==='anthropic'?'Anthropic':entry.displayName,keyUrl,models:models.map(m=>({id:m.id,name:m.name,image:m.inputModalities?.includes('image')??false,...('contextWindow' in m&&m.contextWindow?{contextWindow:m.contextWindow}:{}),...('maxTokens' in m&&m.maxTokens?{maxTokens:m.maxTokens}:{})}))});
       }
     });
@@ -120,7 +122,6 @@ export class ProviderSettings {
       const changesKey=request.apiKey!==undefined||request.removeKey===true||item.keyless;
       if(!changesKey&&document.providers.some(p=>p.id===item.id&&p.pending))throw new ProviderSettingsError('CREDENTIAL_UPDATE_REQUIRED','The previous key update was interrupted. Replace or remove the key to finish repairing this provider.');
       await this.host([],async ctx=>{
-        if(changesKey&&!(await ctx.credentials.describe(credentialRef(item.credentialRef))).writable)throw new ProviderSettingsError('READ_ONLY_CREDENTIAL','This key is supplied by the launch environment. Remove that override and restart before editing it here.');
         document.providers=document.providers.filter(p=>p.id!==item.id);document.providers.push({...item,pending:changesKey});
         await this.commit(document);
         if(changesKey){
@@ -141,8 +142,6 @@ export class ProviderSettings {
       parse(SaveProvider.shape.id,id);
       const document=await this.read();this.checkRevision(document,revision);
       await this.host([],async ctx=>{
-        const info=await ctx.credentials.describe(credentialRef(reference(id)));
-        if(!info.writable)throw new ProviderSettingsError('READ_ONLY_CREDENTIAL','Remove the launch-environment key and restart before removing this provider.');
         document.providers=document.providers.filter(p=>p.id!==id);
         if(document.defaultRoute&&JSON.parse(document.defaultRoute)[0]===id)document.defaultRoute=null;
         await this.commit(document);

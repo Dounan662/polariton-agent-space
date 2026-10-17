@@ -9,3 +9,4 @@ export * from './FileTypeIcon.tsx';
 export * from './Markdown.tsx';
 export * from './StateDot.tsx';
 export * from './file-size.ts';
+export * from './file-types.ts';

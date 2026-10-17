@@ -2,10 +2,10 @@ import { Context } from '@deepseek-ai/cordis';
 import { Session, SessionId, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { CompactionId, compactCheckpointSource } from '@deepseek-ai/dsh-compaction';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 
 /** Create a real DSH-owned log whose compacted source and interrupted tail remain inspectable.
- * This original fixture uses the public DSH 0.2.0-rc.2 compaction contract;
+ * This original fixture uses the public DSH 0.2.1-rc.2 compaction contract;
  * format 4 requires compaction to finish inside its owning open turn.
  */
 export async function persistHistory(root, sessionId = 'history-compaction-interruption') {

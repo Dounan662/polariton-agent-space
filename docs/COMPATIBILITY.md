@@ -1,6 +1,6 @@
 # Compatibility and verification scope
 
-## Platform baseline
+## Historical platform baseline
 
 | Platform | Node | Status |
 | --- | --- | --- |
@@ -40,17 +40,33 @@ experimental data is preserved and rejected without migration. See
 
 ## Harness contract
 
-The runtime is pinned to DeepSeek Harness **0.2.0-rc.2**, with readable session
+The runtime and adapted presentation are pinned to DeepSeek Harness **0.2.1-rc.2**, with readable session
 format **4**, adapter contract `polariton-harness/1`, and inspection contract
 `polariton-source/1`. Dependency versions and integrity hashes are in
-`package-lock.json`. `harness/qualification.json` refers to this public summary;
-`harness/release.json` records the reviewed runtime inputs.
+`package-lock.json`. `harness/qualification.json` intentionally contains no current
+installed deployment profiles; `harness/release.json` records the reviewed runtime
+inputs. Cordis is pinned to **4.0.5**. Research storage remains **5**, Agent Manager
+storage **9**, and Environment storage **9**; readable Harness session format
+remains **4**. This upgrade introduces no migration or data deletion.
 
-The platform entries also retain the baseline from earlier integration testing of
+The historical platform results above retain the baseline from earlier testing of
 Harness history, process control, and core provider behavior. Private development
 campaigns and raw traces are not distributed here. Their historical success does
 not certify every provider, browser, tool, or new source revision. The storage update
 made no model calls and did not requalify live-provider behavior.
+
+## Current runtime and presentation upgrade
+
+The 2026-10-17 development-source checks on macOS arm64 / Node 24.11.0 passed
+810 tests with five optional skips, build and isolated archive installation/build.
+Six real-provider checks and synthetic Chromium checks covered execution, cold
+history, scrolling, code visibility, metrics and trajectory inspection. All 244
+adapted source entries were reviewed against revision
+`687f282e8625c6b8d11ff58211a90524be2e4317`.
+These are recorded upstream checks, not new provider or browser runs in this public
+checkout. Private traces are excluded from the public distribution. Installed
+macOS/Ubuntu service campaigns and Safari have not been requalified for this
+runtime, so historical platform passes are not carried into the current manifest.
 
 ## What ordinary checks do not establish
 

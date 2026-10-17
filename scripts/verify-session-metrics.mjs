@@ -14,6 +14,11 @@ try{
  await usage.click();assert.equal(await stats.count(),0);
  const tokens=page.getByRole('dialog',{name:'Token usage'});
  for(const text of ['161,301 tok','11,211 tok','145,024 tok','5,066 tok'])assert.ok((await tokens.innerText()).includes(text));
+ // Sibling keyboard activation emits click without pointerdown. Independent
+ // upstream activity/usage seats must still keep exactly one dialog visible.
+ await time.focus();await page.keyboard.press('Enter');assert.equal(await tokens.count(),0);assert.equal(await stats.count(),1);
+ await context.focus();await page.keyboard.press('Enter');assert.equal(await stats.count(),0);
+ await usage.focus();await page.keyboard.press('Enter');assert.equal(await page.getByRole('dialog',{name:'Context usage'}).count(),0);assert.equal(await tokens.count(),1);
  await page.keyboard.press('Escape');assert.equal(await tokens.count(),0);
  await context.click();const panel=page.getByRole('dialog',{name:'Context usage'});
  for(const text of ['~22K / 1M','~1.5K','~5.3K','~13.1K'])assert.ok((await panel.innerText()).includes(text));

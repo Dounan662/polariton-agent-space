@@ -1,9 +1,8 @@
-/* Context-occupancy ring beside the send button plus its click-open breakdown
-   panel (menu surface: r12, elevation-prominent). */
+/* Context occupancy below the composer; shared Polariton panel styling. */
 
 .root {
-  position: relative;
   display: inline-flex;
+  flex: none;
 }
 
 /* Ring and percentage share the statistics row’s pill treatment. */
@@ -17,15 +16,18 @@
   width: auto;
   height: 22px;
   border: none;
-  border-radius: 999px;
-  corner-shape: round;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.trigger:hover {
+.trigger:hover,
+.trigger[aria-expanded='true'] {
   background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .track {

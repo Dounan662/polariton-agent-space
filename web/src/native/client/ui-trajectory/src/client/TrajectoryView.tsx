@@ -3,7 +3,7 @@ import {useWorkerState as useState} from '../../../../worker-state.tsx';
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type {
-  AssistantBlock, AssistantMessageNode, ConvViewProps, MessageImageLoader, RenderMessageImages,
+  AssistantBlock, AssistantMessageNode, ConvViewProps, MessageImageLoader,
   ToolCallBlock,
 } from '../../../../conversation.ts'
 import type { TrajectoryTranslate } from './locales.ts'
@@ -150,10 +150,6 @@ export function TrajectoryView({
   viewRequest, completeViewRequest, renderSlot, t, jsonStringWrapping,
 }: TrajectoryProps) {
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>('TrajectoryView.collapsedTurns',EMPTY_TURN_IDS)
-  const renderImages = useCallback<RenderMessageImages>(
-    owner => renderSlot('conversation.trajectory.images', { ...owner, loadImage }),
-    [loadImage, renderSlot],
-  )
   const [collapsedAssistants, setCollapsedAssistants] =
     useState<ReadonlySet<string>>('TrajectoryView.collapsedAssistants',EMPTY_RECORD_IDS)
   const [timelineSelection, setTimelineSelection] = useState<TrajectoryTimeRange | null>('TrajectoryView.timelineSelection',null)
@@ -269,18 +265,21 @@ export function TrajectoryView({
         const provider = request?.providerMetadata?.provider ?? node?.providerMetadata?.provider
         const model = request?.providerMetadata?.model ?? node?.providerMetadata?.model
         const requestConfig = request?.requestConfig ?? node?.requestConfig
+        const startedAt = request?.startedAt
+        const completedAt = request === undefined ? node?.time : request.completedAt
+        const resultSeq = request?.resultSeq ?? node?.seq
         numbered.push({
           seq: entry.seq,
           turn,
           step,
           group: t('group.step', { step }),
           number: index + 1,
-          ...(request?.status === undefined ? {} : { status: request.status }),
-          ...(request?.startedAt === undefined ? {} : { startedAt: request.startedAt }),
-          ...(request?.completedAt === undefined ? {} : { completedAt: request.completedAt }),
+          status: request?.status ?? (node?.interrupted === true ? 'error' : 'complete'),
+          ...(startedAt === undefined ? {} : { startedAt }),
+          ...(completedAt === undefined ? {} : { completedAt }),
           ...(request?.error === undefined ? {} : { error: request.error }),
           ...(request?.errorCode === undefined ? {} : { errorCode: request.errorCode }),
-          ...(request?.resultSeq === undefined ? {} : { resultSeq: request.resultSeq }),
+          ...(resultSeq === undefined ? {} : { resultSeq }),
           ...(request?.retry === undefined ? {} : { retry: request.retry }),
           ...(request?.maxRetries === undefined ? {} : { maxRetries: request.maxRetries }),
           ...(request?.retryDelayMs === undefined
@@ -307,7 +306,7 @@ export function TrajectoryView({
         completedAt: request.completedAt,
         ...(request.error === undefined ? {} : { error: request.error }),
         ...(request.errorCode === undefined ? {} : { errorCode: request.errorCode }),
-        resultSeq: request.startSeq,
+        ...(request.status === 'running' ? {} : { resultSeq: request.startSeq }),
         ...(request.providerMetadata?.provider === undefined
           ? {}
           : { provider: request.providerMetadata.provider }),
@@ -344,14 +343,17 @@ export function TrajectoryView({
     runningCalls, requests, inspection.systemPrompts, callSchemas, t,
   ])
   const timelinePartialSignature = partialStructureSignature(partial)
+  const partialStartTime = partial?.timing?.stepStartTime
+  const partialFirstTokenTime = partial?.timing?.firstTokenTime
   const timelinePartial = useMemo<TrajectorySnapshot['partial']>(() => partial === null
     ? null
     : {
       turn: partial.turn,
       step: partial.step,
       blocks: partial.blocks.map(block => timelineBlock(block)),
+      ...(partial.timing === undefined ? {} : { timing: partial.timing }),
     },
-  [partialStep, partialTurn, timelinePartialSignature])
+  [partialStep, partialTurn, timelinePartialSignature, partialStartTime, partialFirstTokenTime])
   const timelineTurns = useMemo(
     () => appendTrajectoryPartialLayout(finalized.turns, timelinePartial, finalized.lastIndex, t),
     [finalized, timelinePartial, t],
@@ -561,7 +563,8 @@ export function TrajectoryView({
             ...jsonStringWrapping,
             label: t('record.wrapLines'),
           }}
-          renderImages={renderImages}
+          renderSlot={renderSlot}
+          loadImage={loadImage}
           requestNumbers={requestNumbers}
           turns={timelineTurns}
           streamingCells={streamingCells}

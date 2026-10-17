@@ -1,13 +1,13 @@
 import {useDisclosure} from './use-disclosure.ts'
 import { memo, useMemo } from 'react'
 import type { ChatViewSlotProps, CommandRowOwnerProps } from '../contract/slots.ts'
-import { DisclosureRow, IconApiOutline14, TextShimmer } from '../../../../../chat-primitives.tsx'
+import { DisclosureRow, IconApiOutlineRegular, TextShimmer } from '../../../../../chat-primitives.tsx'
 import a11yCss from './accessibility.module.css'
 import css from './GenericCommandCard.module.css'
 
 type CommandRowState = 'running' | 'ok' | 'error'
 
-const COMMAND_ICON = <IconApiOutline14 size={14} />
+const COMMAND_ICON = <IconApiOutlineRegular size={14} />
 
 /** Node state → row state semantic (running while unsettled; outcome kind after). */
 function stateOf(outcome: CommandRowOwnerProps['node']['outcome']): CommandRowState {

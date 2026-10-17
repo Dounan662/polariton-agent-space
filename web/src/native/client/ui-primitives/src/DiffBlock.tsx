@@ -4,9 +4,9 @@ import clsx from 'clsx'
 import { structuredPatch } from 'diff'
 import { FoldToggle } from './FoldToggle.tsx'
 import { writeClipboard } from '../../../../ui/clipboard.ts'
-import { CodeToolbar, type CodeToolbarLabels } from './CodeToolbar.tsx'
+import { CodeToolbar, type CodeToolbarLabels } from '../../../../ui/CodeToolbar.tsx'
 import { languageForPath } from '@deepseek-ai/dsh-util-code-language'
-import cardCss from './CodeCard.module.css'
+import cardCss from '../../../../ui/CodeCard.module.css'
 import css from './DiffBlock.module.css'
 
 /** Output lines shown before the height cap collapses the middle. */

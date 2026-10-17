@@ -13,7 +13,7 @@ import { loadConfig } from '../src/config.ts';
 import { ControlledHarness } from './fixtures/harness.ts';
 import { persistHistory } from './fixtures/history.mjs';
 import { Context } from '@deepseek-ai/cordis';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session';
 import { MessageId } from '@deepseek-ai/dsh-llm';
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller';

@@ -10,7 +10,7 @@ import { Context } from '@deepseek-ai/cordis';
 import LocalAttachmentStore from '@deepseek-ai/dsh-attachment-local';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { Session, SessionId, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import { applicationPaths } from '../src/paths.ts';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNQcEgAAAFEAMELjZZCAAAAAElFTkSuQmCC', 'base64');

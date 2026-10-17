@@ -1,6 +1,6 @@
 import React from 'react';
 import {createPortal} from 'react-dom';
-import {IconChevronDownOutline14, IconCheckOutline16, Tooltip} from './ui/index.ts';
+import {IconChevronDownOutlineRegular, IconCheckOutlineRegular, Tooltip} from './ui/index.ts';
 import {useDropdown} from './dropdown.tsx';
 
 type Option = {value: string; label: string; disabled?: boolean};
@@ -18,7 +18,7 @@ export function Select({label, value, options, onChange, disabled = false, onFoc
       className={`select-trigger ${className}`} aria-label={`${label}: ${selected?.label??value}`} aria-haspopup="listbox"
       aria-expanded={popup.open} aria-controls={popup.open?popup.id:undefined} disabled={disabled}
       onFocus={onFocus} onClick={popup.toggle} onKeyDown={popup.onTriggerKeyDown}>
-      <span className="select-label">{selected?.label??value}</span><IconChevronDownOutline14/>
+      <span className="select-label">{selected?.label??value}</span><IconChevronDownOutlineRegular/>
     </button>;
   return <>
     {tooltip?<Tooltip label={tooltip} disabled={popup.open} side="top">{control}</Tooltip>:control}
@@ -26,7 +26,7 @@ export function Select({label, value, options, onChange, disabled = false, onFoc
       className="action-menu select-menu" onKeyDown={popup.onMenuKeyDown} onClick={event=>event.stopPropagation()}>
       {options.map(option=><button key={option.value} type="button" role="option" aria-selected={option.value===value}
         tabIndex={-1} disabled={option.disabled} onClick={()=>{popup.close(true);if(option.value!==value)onChange(option.value);}}>
-        <span className="action-label">{option.label}</span>{option.value===value&&<span className="action-icon" aria-hidden="true"><IconCheckOutline16/></span>}
+        <span className="action-label">{option.label}</span>{option.value===value&&<span className="action-icon" aria-hidden="true"><IconCheckOutlineRegular/></span>}
       </button>)}
     </div>,popup.portal)}
   </>;

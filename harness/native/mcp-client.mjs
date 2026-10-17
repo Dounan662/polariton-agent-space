@@ -1,5 +1,5 @@
 /**
- * Derived from @deepseek-ai/dsh-mcp-client 0.2.0-rc.2 (MIT, DeepSeek).
+ * Derived from @deepseek-ai/dsh-mcp-client 0.2.1-rc.2 (MIT, DeepSeek).
  * See MCP-ORIGIN.json and MCP-LICENSE. This is the sole production MCP engine.
  * Local changes: scoped live credentials, caller-supplied cleanup budgets, and
  * a positive settlement barrier consumed by the native execution guardian.

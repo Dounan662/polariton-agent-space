@@ -1,3 +1,4 @@
+import {PartialArguments} from '@deepseek-ai/dsh-util-values';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {AttachmentId} from '@deepseek-ai/dsh-attachment';
@@ -35,7 +36,7 @@ test('trajectory explains tool registry changes without inventing model or tool 
 });
 
 test('trajectory displays tools only after dispatch supplies complete arguments', () => {
-  const tool = {callId: 'call', name: 'inspect', turn: 1, step: 1, time: 1000, subCalls: []};
+  const tool = {callId: 'call', name: 'inspect', args: PartialArguments.fromText('{"path":"plot.png"}'), turn: 1, step: 1, time: 1000, subCalls: []};
   assert.deepEqual(cells({nodes: [], partial: null, runningCalls: [{...tool, phase: 'preparing'}]}), []);
   const [record] = cells({nodes: [], partial: null, runningCalls: [{...tool, phase: 'start', argsRaw: '{"path":"plot.png"}'}]});
   assert.ok(record);

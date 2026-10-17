@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { Context } from '@deepseek-ai/cordis';
 import { Session, SessionId, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import LocalAttachmentStore from '@deepseek-ai/dsh-attachment-local';
 
 /** Original one-pixel image and inert file retained through DSH's public attachment contract. */

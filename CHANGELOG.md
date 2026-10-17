@@ -5,6 +5,16 @@ handled separately.
 
 ## Unreleased — first public preview
 
+- Upgrade the complete Harness runtime and browser presentation to DSH 0.2.1-rc.2
+  with Cordis 4.0.5; enforce matching direct, transitive and presentation releases.
+- Refresh chat/tool status, structured user references, trajectory timing, usage
+  presentation and Markdown/image rendering while preserving worker-scoped history.
+- Prefer saved provider keys over launch-environment fallbacks; allow Settings to
+  replace or remove saved keys, and wait for credential readiness during discovery.
+- Preserve storage versions and format-4 history. Installed platform qualification
+  remains separate from local runtime verification; see [compatibility](docs/COMPATIBILITY.md).
+
+
 - Open the selected node workspace in the system file manager from the workspace
   toolbar, with authenticated node-scoped access and observable launch failures.
 - Preserve worker reading position when switching between conversation and trajectory.

@@ -1,5 +1,5 @@
 /* Stat-dialog surface skin shared by the Turn-stat pills (TurnUsagePanel) and
-   the session stats pills (StatsPills): menu surface, r12, elevation-prominent
+   the session stats pills (StatsPills.tsx): shared Polariton menu surface
    — ContextMeter's panel skin. Placement comes from useStatDialog
    (stat-dialog.ts). */
 
