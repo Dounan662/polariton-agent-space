@@ -63,14 +63,18 @@ const files=[
   ".github/workflows/ci.yml",
   ".github/workflows/release.yml",
   "docs/ARCHITECTURE.md",
+  "docs/CHECKPOINTS.md",
   "docs/CLI.md",
   "docs/COMPATIBILITY.md",
   "docs/DEVELOPMENT.md",
   "docs/ENVIRONMENT.md",
+  "docs/ENVIRONMENT_REFERENCE.md",
   "docs/GETTING_STARTED.md",
   "docs/LIMITATIONS.md",
   "docs/MAINTAINING.md",
+  "docs/PROVENANCE.md",
   "docs/README.md",
+  "docs/RESEARCH_PROJECTS.md",
   "docs/STORAGE.md",
   "docs/UI_ORIGIN.md"
 ];

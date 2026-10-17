@@ -13,7 +13,7 @@ Polariton is a preview for a single owner on a trusted local machine. Read
   edits. They do not establish exclusive authorship or freeze external writers.
 - Checkpoints consume shared staging and follow Git ignore/filter/hook rules; they
   are not raw workspace backups or concurrent-write certification. Avoid external
-  Git changes during publication. See [checkpoint semantics](GETTING_STARTED.md#save-a-checkpoint).
+  Git changes during publication. See [checkpoint semantics](CHECKPOINTS.md).
 - Unresolved publication recovery conflicts block new checkpoint identities on the
   affected node, leaving ordinary file work available. Inspect the original receipt;
   this preview has no automatic abandonment, history repair or user-facing repair flow.

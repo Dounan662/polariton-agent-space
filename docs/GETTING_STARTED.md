@@ -1,76 +1,80 @@
 # Getting started
 
-Follow the macOS or Ubuntu quick start in the [README](../README.md), then keep
-`npm start` running in Terminal.
+Create a research project, give a worker a small task, and save the result as a
+checkpoint. No additional capability environment or Docker setup is needed for
+this walkthrough.
 
-## Connect a model
+## Launch and connect a model
 
-Open the complete local browser link printed in Terminal. It includes a one-use
-sign-in token. If you restart Polariton, use the new link.
+Follow the platform quick start in the [README](../README.md), then keep `npm start`
+running in Terminal. Open the complete browser link it prints, including the one-use
+sign-in token. After a restart, use the new link.
 
-Open **Settings → Models & providers**, enter your provider key, and choose a
-model. Saving a key does not contact the model to verify it. Sending a task uses
-your provider account and may incur charges. Keys are stored locally; see
-[security](../SECURITY.md) before sharing files or backups.
+In **Settings → Models & providers**, enter your provider key and choose a default
+model for new workers. Saving a key does not verify model access. Sending work uses
+your provider account and may incur charges; startup itself needs no key. See
+[security](../SECURITY.md) before sharing settings or backups.
 
-## Create a project and work with agents
+## Create your first project
 
-1. Create a project and choose a folder on your computer for its research files.
-2. Select its initial node and worker. Send a small task with a clear outcome.
-3. Add nodes to explore other ideas or directions. Relationships describe how
-   ideas connect; they do not automatically start or schedule work.
-4. Add workers when needed. Workers on the same node share files, but each has
-   its own conversation and execution context. Coordinate edits to shared files.
-5. Use **Steer** to guide an active turn and **Interrupt** to stop that worker's
-   current work. Check its status before sending a replacement task.
-6. Switch between conversation and trajectory to inspect messages and tool activity.
-   Reading saved history does not activate a model.
+Choose **Create project** and select a folder for the project. Its folder name becomes
+the project name, which you can rename later. Polariton creates an initial node and
+worker. Each node has its own workspace within the project.
 
-Workers can run tools and change files within their granted access. Review
-permission requests and the files they produce. Use **Open workspace folder in
-system file manager** in the workspace toolbar to open the selected node's files
-in Finder or the Linux desktop file manager. A desktop session is required; a
-failed launch is reported in the workspace.
+Select the initial worker. Check its **Model** selection and leave **Environment**
+as **No environment** for this task. See [research project structure](RESEARCH_PROJECTS.md)
+for how projects, nodes and workers fit together.
+
+## Give the worker a small task
+
+Send a concrete request with a file you can inspect:
+
+> Create a short plan for comparing two qubit readout settings. Save it as
+> `readout-plan.md`, covering the measurements to collect, analysis steps, and checks
+> needed before drawing conclusions. Use synthetic examples only.
+
+This is a planning exercise, not an instrument connection or a validated experimental
+protocol. The worker can use its built-in tools to write the file.
+
+## Inspect and guide the work
+
+Read the response, inspect tool activity in the trajectory view, and open the generated
+file in the workspace. Review any permission requests. The workspace toolbar also
+lets you open the node's folder in your system file manager when a desktop session
+is available.
+
+Send follow-up guidance through the same message box, including while the worker is
+working. Use **Interrupt** to stop its current work. If the outcome is uncertain,
+inspect its status and history before sending a replacement task. Reading saved
+history does not activate a model.
 
 ## Save a checkpoint
 
-A checkpoint retains a commit in the node's shared Git history. Publication stages
-all additions, modifications and deletions with `git add -A`, then commits changes
-or registers the existing `HEAD` when unchanged. It includes already staged work
-and replaces partial staging. Untracked ignored files stay excluded; tracked files
-remain included even if they match ignore rules. Git attributes, filters and hooks
-apply normally. Review important research outputs for Git inclusion before publishing.
+After reviewing the file and finishing immediate writes, choose **Publish checkpoint**
+in the workspace toolbar. A checkpoint retains a commit in the node's shared Git
+history. Publication includes shared changes and may capture unfinished work from
+other workers; avoid manual Git operations during publication.
 
-Finish immediate writes and avoid manual staging, commits or branch changes during
-publication. Workers can keep running, so a checkpoint may contain unfinished shared
-edits and files read at different times. It certifies neither tests nor scientific
-correctness. Resolve detached HEAD, conflicts or unfinished Git operations before
-retrying. After an uncertain outcome, inspect the original operation receipt rather
-than issuing a new publication identity.
+To explore an alternative, use **Create node from checkpoint**. The new node receives
+supported files in an independent repository, without the original workers or their
+conversations. Add another worker to the same node instead when you want a separate
+conversation working on the same files.
 
-Manual commits advance history without creating a Polariton checkpoint. Publishing
-with no further edits registers that commit. Retained checkpoints survive later
-branch rewriting; different checkpoint notes can refer to the same commit.
+Read [checkpoints and inheritance](CHECKPOINTS.md) for staging rules, file exclusions,
+retained history and recovery guidance.
 
-You can continue a new node from a selected checkpoint. It receives retained regular
-and executable files in an independent repository, without the source history or
-worker context. Symlinks, submodules, external Git LFS payloads and unsafe or non-UTF-8
-paths are not supported for inheritance. A committed external-content pointer does
-not back up its payload. File preview/upload limits do not limit checkpoint or
-inheritance size, but Git work still needs time, disk space and configured resources.
+## Add capabilities when needed
 
-## Add tools when needed
-
-Ordinary conversation does not require Docker. To connect additional tools,
-read [capabilities and environments](ENVIRONMENT.md). Select a prepared environment
-before a worker's first message. Sending a message does not install infrastructure.
+**Ask a worker to connect existing tools or build a custom lab capability.** Follow
+[capabilities and environments](ENVIRONMENT.md) for examples. Select a prepared
+environment before a worker's first activation; use a new worker to adopt a different
+assignment afterward. Sending ordinary work does not install infrastructure.
 
 ## Stop and return
 
-Press Ctrl+C in the launch terminal, or run `npm stop` from the repository in
-another terminal. Closing the browser does not stop ongoing work. Run `npm start`
-again and open the new launch link to return to your saved projects.
+Press Ctrl+C in the launch terminal, or run `npm stop` from the repository in another
+terminal. Closing the browser does not stop ongoing work. Run `npm start` again and
+open the new link to return to saved projects; inspect interrupted work before resuming.
 
-Back up your stopped data and research folders using [storage and backups](STORAGE.md).
-If a task's outcome is uncertain, inspect its status and history before retrying.
-See [known limitations](LIMITATIONS.md) for other troubleshooting guidance.
+Follow [storage and backups](STORAGE.md) to preserve your data and research folders.
+See [troubleshooting](LIMITATIONS.md#common-problems) if setup or execution fails.

@@ -1,32 +1,118 @@
 # Capabilities and environments
 
-A **capability** describes a source, runtime, connection, requirements and
-authentication. An **environment** selects exact capability revisions and settings
-for a worker. Ordinary conversation and built-in Harness tools need no managed
-container environment. Sending or resuming work never installs infrastructure.
+## A configured rack for a worker
 
-## Prepare and validate tools
+Think of a research lab's instruments: each provides an ability, and a particular
+experiment needs a selected set of instruments configured for the task.
 
-Use the CLI's complete preparation operation for a package or endpoint:
+- A **capability** is an instrument: a specific ability that may expose several MCP
+  tools. A custom qubit-analysis capability might validate measurement data, analyze
+  readout results and generate a report.
+- An **environment** is a configured rack: a selection of capabilities, their exact
+  revisions and settings, assembled for a kind of work.
+- A **worker** uses the selected rack alongside its built-in Harness tools. Select
+  one environment before its first activation; the assignment stays fixed afterward.
+  A worker can also operate with **No environment**.
 
-```sh
-npm run harnessctl -- environment prepare --name Browser --source 'npm:@playwright/mcp@0.0.83' --preview
-npm run harnessctl -- environment prepare --name Browser --source 'npm:@playwright/mcp@0.0.83'
-npm run harnessctl -- environment inspect ENVIRONMENT_ID --revision REVISION_ID
-npm run harnessctl -- environment validate ENVIRONMENT_ID --revision REVISION_ID
+```mermaid
+%%{init: {"flowchart": {"subGraphTitleMargin": {"top": 8, "bottom": 28}}}}%%
+flowchart TB
+    subgraph Rack["`ENVIRONMENT: **Readout research**
+*Selected capability revisions and settings*`"]
+        Browser("`CAPABILITY: **Browser tools**
+Inspect documentation`")
+        Analysis("`CAPABILITY: **Qubit analysis**
+Validate data · analyze results · report`")
+    end
+    Worker("`**Research worker**
+Own conversation and execution context`")
+    Rack -->|Select before first activation| Worker
+
+    classDef capability fill:#edf9f5,stroke:#83bdae,color:#173f36,stroke-width:1px;
+    classDef worker fill:#f3f0fc,stroke:#a99acb,color:#352858,stroke-width:1.5px;
+    class Browser,Analysis capability;
+    class Worker worker;
+    style Rack fill:#f4fbf8,stroke:#398772,stroke-width:2px,color:#173f36
+    linkStyle default stroke:#64748b,stroke-width:1.5px;
 ```
 
-Replace the IDs with the returned environment and revision. Preview does not
-install, launch or reserve identities; unresolved remote selections remain explicit.
-Preparation retains exact sources, publishes the environment revision and prepares
-its dependencies. It can finish partial or blocked. Inspect each component.
+The capabilities shown are examples, not preinstalled tools. The rack is a
+configuration metaphor, not a single container or a guarantee of exclusive tool
+access. Capabilities may use local processes, managed containers or remote services.
+EnvironmentDaemon manages many environments; the [architecture guide](ARCHITECTURE.md#capability-runtimes)
+explains their runtime boundaries.
+
+This design lets a lab improve its tooling as research progresses: turn a recurring
+need into a tested capability, then reuse it in later work. A one-off analysis may
+only need a script. New capability revisions do not silently change existing worker
+assignments; adopting a different environment requires a new worker.
+
+## Ask a worker to prepare what you need
+
+**The recommended way to add or build a capability and prepare an environment is
+to ask a Polariton worker.** Describe the research outcome; the worker can connect
+existing tools or build custom lab tools using the bundled `make-polariton-tool`
+guidance. Routine configuration need not be done manually.
+
+### Add an existing tool
+
+> Add [Playwright MCP](https://github.com/microsoft/playwright-mcp) as a Polariton
+> capability, prepare an environment with it, and create a new worker using that
+> environment to test opening a public documentation page.
+
+### Build a custom lab tool
+
+> Build a reusable capability for our qubit readout analysis. Inspect the example CSV
+> files in this workspace, then implement an MCP tool that accepts measurement data
+> and returns a comparison summary. Test with synthetic data and invalid inputs.
+> Commit the package, prepare an environment containing it, and validate an actual
+> tool call. Report the tests, remaining setup, and revision for a new worker.
+
+The managed authoring path is **author and test → commit → prepare → validate**.
+It uses a package in the current workspace; no separate repository or registry
+publication is required. See [custom tool authoring](ENVIRONMENT_REFERENCE.md#custom-tool-authoring)
+for container requirements and input boundaries.
+
+Ask for an environment when you want a prepared combination for worker use. Adding
+and completing a standalone capability alone does not create an environment.
+
+## Use the prepared environment
+
+1. Review the worker's readiness report and exact environment revision.
+2. Complete required login and consent in **Environment → Capabilities**, or resolve
+   reported host prerequisites. Keep credentials out of the conversation.
+3. Ask the worker to continue the retained preparation operation and recheck affected
+   components after setup is resolved.
+4. Select the prepared revision for a new worker, or a worker that has never been
+   activated, before sending its first message.
+
+Preparation does not automatically create a worker or assign the new environment
+to the worker doing setup. Restarting or resuming an activated worker does not unlock
+its assignment, including **No environment**. Sending ordinary work never installs
+packages or starts managed infrastructure; preparation is an explicit task.
+
+## Understand readiness
+
+| Evidence | What it establishes |
+| --- | --- |
+| Preparation | Required dependencies and infrastructure were prepared |
+| Connection and discovery | Harness connected and discovered the server's tools |
+| Functional check | A declared test operation produced an inspected outcome |
 
 Validation connects and discovers tools through Harness without creating a worker
 or making a model call. `--check NAME` runs an explicitly declared functional check
 with its declared effects and budget. Preparation is not connection evidence;
 discovery is not a functional pass; a functional pass is not continuous health.
-Select the prepared environment before the worker's first message. No preparation
-or validation operation automatically assigns an environment or creates a worker.
+
+A saved capability or environment definition alone does not establish readiness.
+Preparation may be partial or blocked; inspect each component. None of these checks
+guarantees continuous availability or scientific correctness. Review methods and
+results before relying on a custom tool in research.
+
+## Supported capability sources
+
+Workers can prepare capabilities from the following sources within the supported
+runtime and prerequisite contracts:
 
 | Source | Supported preparation contract |
 | --- | --- |
@@ -41,124 +127,30 @@ or validation operation automatically assigns an environment or creates a worker
 Convenience prefixes are `npm:`, `pypi:`, `nuget:`, `cargo:` and `oci:`; HTTP URLs
 select external endpoints. Exact package versions are required. Bundles, installed
 commands, Git packages and mixed environments use `--input specification.json`.
-Use `environment prepare --help --schema` for the complete contract. Updating an
+Use `environment prepare --help --schema --json` for the complete contract. Updating an
 existing environment requires its target ID, expected revision and complete component
 list; a stale revision conflicts rather than overwriting concurrent changes.
 
-Review tool code, permissions, network access and credentials. Host programs and
-native builds use the owner's access, not an OS sandbox. Unsupported recipes return
-explicit blockers. See [security](../SECURITY.md) and [qualification](COMPATIBILITY.md).
+See the [preparation reference](ENVIRONMENT_REFERENCE.md#prepare-and-validate-tools)
+for the complete CLI workflow and [compatibility](COMPATIBILITY.md) for verification
+scope.
 
-## Recover a blocked operation
+## Technical reference
 
-Preparation, continuation and validation generate request identities and print
-recovery information before dispatch. Keep complete stdout/stderr. After a timeout,
-inspect that operation instead of submitting a new installation:
+For direct CLI use, begin with discovery:
 
 ```sh
-npm run harnessctl -- operation get environment:REQUEST_ID --details
-npm run harnessctl -- operation continue environment:REQUEST_ID --input resolution.json
-npm run harnessctl -- operation cancel environment:REQUEST_ID
+npm run harnessctl -- environment prepare --help
+npm run harnessctl -- environment prepare --help --schema --json
 ```
 
-A resolution names the current `expectedVersion`, `actionId`, and the requested
-retry, toolchain path or completed owner authentication. Read executable help for
-the schema. Observation timeouts do not cancel work; cancellation must settle owned
-processes and resources. Uncertain effects require inspection before retry.
+The [capability and environment reference](ENVIRONMENT_REFERENCE.md) preserves the
+full procedures:
 
-## Capability pages and accounts
-
-Open **Environment → Capabilities** and select a pending or registered capability.
-Its full page owns account setup; an environment component's **Open capability**
-link leads there too. Pending components remain visible before account setup or
-environment publication and after reload.
-
-Save private account settings and explicitly connect the account. Browser login
-and consent require the owner's action; worker commands return a pending action.
-Never put tokens in capability JSON, CLI arguments or public examples. An OAuth
-connection is bound to one resource URL; different services need separate connection
-IDs even when they share a provider client registration.
-
-For a pending capability, **Save authentication setup** retains the reviewed account
-choice and **Finish setup** completes the component after login. Completing a
-component does not publish its parent environment or discard sibling components.
-Open the retained parent plan and choose **Continue environment preparation** to
-finish the full plan. A standalone capability draft prepares reusable dependencies
-without creating an environment.
-
-For a registered capability, **Save account binding** creates a new exact revision.
-Select that revision explicitly when composing an environment. Existing environment
-revisions and workers keep their previous references. Assignment, including
-**No environment**, stays fixed after activation. Repairing preparation of the same
-definition can be observed on fresh activation; changing a definition requires a
-new selected revision and worker.
-
-OAuth supports discovery, supported client registration, PKCE and scoped live
-refresh. Provider compatibility is bounded, not universal. Google Workspace endpoint
-forms select Google metadata and preregistered-client mode; enter client settings
-privately using the displayed callback URI. Real Google consent and authenticated
-Workspace calls still require owner setup and verification. Secrets use private
-POSIX files, not an OS keychain. Local disconnect does not claim upstream revocation;
-static credentials already copied into a process require worker restart.
-
-## Expert registration and composition
-
-Definition-only registration remains available. **Add** supports repository and MCP
-configuration entry paths; preview and registration do not install or run a tool.
-Compose exact capability revisions, then **Apply** the selected environment revision.
-Managed authored capabilities require an installed release. Editing components
-publishes a revision; it does not silently update existing assignments.
-
-A simple existing endpoint configuration is:
-
-```json
-{
-  "mcpServers": {
-    "analysis": {
-      "type": "http",
-      "url": "https://example.invalid/mcp"
-    }
-  }
-}
-```
-
-Replace the URL with your server's endpoint. A URL without an authentication declaration
-does not prove tool calls need no login. See the maintained
-[preparation reference](../skills/make-polariton-tool/references/preparation.md),
-[MCP import reference](../skills/make-polariton-tool/references/mcp.md), and
-[environment reference](../skills/make-polariton-tool/references/environment.md).
-
-## Managed containers
-
-On macOS, provision the dedicated Colima profile `polariton` before container use:
-
-```sh
-brew install colima docker
-colima start polariton --cpu 4 --memory 8 --disk 30 --runtime docker --vm-type vz
-```
-
-The default socket is `~/.colima/polariton/docker.sock`. Explicit preparation can
-start an already provisioned configured profile and fill prepared capacity; access
-only claims available capacity. Sending work never starts the engine. Polariton
-does not install Docker, create the profile or switch the global Docker context.
-
-On Ubuntu, provision a local Docker Engine and deliberately grant your account
-access to `/var/run/docker.sock`. Rootless/remote engines and the new generic OCI
-preparation path on Ubuntu are outside the qualified profile.
-
-Managed builds retain source and image identities. Authored Git containers use a
-separate server-grant boundary from generic OCI stdio instances. Back up persistent
-capability storage separately; removing a definition or releasing access does not
-silently delete its user data. For authored tools, use the
-[managed reference](../skills/make-polariton-tool/references/managed.md) and
-[starter](../skills/make-polariton-tool/assets/managed/).
-
-## Inspect and troubleshoot
-
-Inspect preparation, pending actions, and per-component validation/startup status.
-Healthy components and ordinary conversation remain available when other tools fail.
-Resolve missing credentials, executables or engine prerequisites through the retained
-operation. Do not replay a task until its prior outcome is understood.
-
-The bundled official catalog is empty. Register capabilities you have reviewed.
-The [CLI](CLI.md) exposes inspection and recovery without editing internal databases.
+- [Preparation and validation procedures](ENVIRONMENT_REFERENCE.md#prepare-and-validate-tools)
+- [Account setup](ENVIRONMENT_REFERENCE.md#capability-pages-and-accounts)
+- [Blocked operations and recovery](ENVIRONMENT_REFERENCE.md#recover-a-blocked-operation)
+- [Expert registration and composition](ENVIRONMENT_REFERENCE.md#expert-registration-and-composition)
+- [Custom tool authoring](ENVIRONMENT_REFERENCE.md#custom-tool-authoring)
+- [Managed container setup](ENVIRONMENT_REFERENCE.md#managed-containers)
+- [Inspection and troubleshooting](ENVIRONMENT_REFERENCE.md#inspect-and-troubleshoot)

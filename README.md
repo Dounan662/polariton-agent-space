@@ -1,34 +1,53 @@
 # Polariton
 
-A local research workspace for organizing ideas as a graph, working in independent
-Git workspaces, and collaborating with concurrent AI workers.
+**Core infrastructure for humans and AI agents working together in scientific research.**
 
-**Preview — 5.0.0-preview.1.** Run Polariton directly from this repository with
-Node.js and Git. The quick starts below use fresh data; migration from earlier
-experimental versions is not supported. Packaged releases will be handled separately.
+Research develops as it proceeds: questions branch, methods change, and new tools
+become necessary. Polariton gives this evolving work a persistent structure, lets
+workers build reusable lab tools, and keeps records you can return to and inspect.
 
-## What you can do
+## What you can do today
 
-- Organize research as an editable graph of nodes and descriptive relationships.
-- Run independent workers that share a node's files while keeping separate context.
-- Inspect conversations, tool activity, and saved execution history.
-- Publish checkpoints in shared Git history and continue from a retained commit.
-- Connect model providers; prepare package, container and external MCP capabilities.
-- Inspect preparation, resolve account setup, and validate tools before assigning them.
+- **Explore connected research directions.** Organize work as a graph of nodes,
+  each with an independent Git workspace. Relationships describe how the work connects.
+- **Work with concurrent agents.** Workers on a node share files while keeping
+  separate conversations and execution context.
+- **Build the tools your research needs.** Ask workers to connect existing MCP
+  tools or create custom lab capabilities, then prepare versioned environments
+  for new workers. Account login and host prerequisites may require your setup.
+- **Revisit the evidence.** Inspect graph history, file checkpoints and worker
+  trajectories. Continue a new node from a selected checkpoint's files.
 
-Polariton uses DeepSeek Harness (DSH) for model execution, tools, context, and history.
-The application owns research records, worker control, and capability infrastructure.
+Polariton uses DeepSeek Harness for model execution, tools, context and session
+history. Polariton owns research organization, worker coordination and capability
+infrastructure.
 
-## Start here
+## Current stage and direction
+
+**Preview — 5.0.0-preview.1.** This actively developed infrastructure provides the research
+workspace, concurrent workers, tool environments and inspectable records described
+above. It runs locally for a single owner; domain-specific lab tools can be added
+as capabilities.
+
+Polariton is the foundation for a more automated lab system, not a complete lab
+system. Domain-specific tools, instrument integrations and experimental workflows
+build on this core infrastructure, allowing lab capabilities to grow through research.
+
+Run from source with Node.js and Git using fresh data. Earlier experimental data
+has no automatic migration; preserve it before upgrading. Packaged releases will
+be handled separately. See [known limitations](docs/LIMITATIONS.md).
+
+## Explore the docs
 
 | Goal | Guide |
 | --- | --- |
-| Try Polariton on an Apple Silicon Mac | Quick start below |
-| Try Polariton on an Ubuntu desktop | Ubuntu quick start below |
-| Create your first project | [First steps](docs/GETTING_STARTED.md) |
-| Develop or contribute | [Development](docs/DEVELOPMENT.md), [contributing](CONTRIBUTING.md) |
-| Understand the system | [Architecture](docs/ARCHITECTURE.md) |
-| Maintain the repository | [Maintainer guide](docs/MAINTAINING.md) |
+| Install and launch | Platform quick starts below |
+| Create your first project | [Getting started](docs/GETTING_STARTED.md) |
+| Understand nodes and workers | [Research project structure](docs/RESEARCH_PROJECTS.md) |
+| Connect or build lab tools | [Capabilities and environments](docs/ENVIRONMENT.md) |
+| Understand the research record | [Provenance](docs/PROVENANCE.md) |
+| Use commands or scripts | [CLI](docs/CLI.md) |
+| Understand or extend the system | [Architecture](docs/ARCHITECTURE.md), [development](docs/DEVELOPMENT.md) |
 
 ## Get the source
 
@@ -62,7 +81,7 @@ Run only one instance at a time with the default settings.
 
 Docker is needed for managed container capabilities, not ordinary chat. On macOS,
 provision the dedicated Colima profile before using those capabilities; see
-[Environment setup](docs/ENVIRONMENT.md#managed-containers).
+[Environment setup](docs/ENVIRONMENT_REFERENCE.md#managed-containers).
 
 ## Quick start: Ubuntu desktop (amd64)
 
@@ -111,20 +130,15 @@ Persistent data lives outside the repository:
 | macOS | `~/Library/Application Support/Polariton/data/` |
 | Ubuntu | `~/.local/share/polariton/data/` (honors `XDG_DATA_HOME`) |
 
-Both contain `app/` and `environment/`. Use `npm run dev` for separate development
-data (`Polariton-dev` / `polariton-dev`) and `npm run dev:stop` to stop it. Tests
-use temporary directories. Development and normal launches still share the default
-browser port, so configure different ports before running both together.
+Both contain `app/` and `environment/`. Research files at selected project paths
+stay there; back up both the data bundle and those workspaces. Provider keys are
+local plaintext protected by file permissions. Read [storage and backups](docs/STORAGE.md)
+and the [security boundary](SECURITY.md) before moving or sharing data.
 
-Run `npm run verify:storage` to check attachment saving and reopening with the
-unmodified Harness. Existing `.local` data is preserved, never moved or deleted
-automatically; read [storage and retained-data guidance](docs/STORAGE.md).
-Research workspaces at selected project paths stay there. Back up both the data
-bundle and those workspaces. Provider keys are local plaintext protected by file
-permissions, not an encrypted vault. Read the [security boundary](SECURITY.md).
-
-Earlier experimental data is not automatically migrated. Preserve it and follow
-the [storage guidance](docs/STORAGE.md) before changing paths or versions.
+For development, `npm run dev` uses separate data and `npm run dev:stop` stops it.
+Normal and development launches share the default browser port; configure distinct
+ports before running both together. See [development](docs/DEVELOPMENT.md) for setup
+and [storage checks](docs/STORAGE.md#check-attachment-storage) for attachment verification.
 
 ## Contribute and learn more
 

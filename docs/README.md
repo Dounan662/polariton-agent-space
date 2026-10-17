@@ -6,8 +6,12 @@ or Ubuntu. These guides describe the current source checkout.
 ## For users
 
 - [Getting started](GETTING_STARTED.md): providers, projects, workers, and checkpoints.
+- [Research project structure](RESEARCH_PROJECTS.md): nodes, workspaces, workers, and research relationships.
+- [Checkpoints and inheritance](CHECKPOINTS.md): publication, retained files, and recovery.
+- [Research provenance](PROVENANCE.md): graph history, file checkpoints, and worker trajectories.
 - [Storage and backups](STORAGE.md): data locations, development profiles, and safe preservation.
-- [Capabilities and environments](ENVIRONMENT.md): connecting tools and preparing environments.
+- [Capabilities and environments](ENVIRONMENT.md): the rack model and worker-assisted tool setup.
+- [Capability and environment reference](ENVIRONMENT_REFERENCE.md): preparation, accounts, containers, and recovery.
 - [Command line](CLI.md): discover commands and recover uncertain operations.
 - [Known limitations](LIMITATIONS.md): platform, history, concurrency, and compatibility limits.
 - [Security](../SECURITY.md): credentials, local access, and private reporting.
